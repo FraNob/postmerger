@@ -2,10 +2,10 @@ name: pm_env
 
 channels:
   - conda-forge
-  # - nodefaults
+  - nodefaults
   # - pytorch
   # - nvidia
-  - defaults
+  # - defaults
 
 dependencies:
   ## ---- Base ----
@@ -32,14 +32,7 @@ dependencies:
   # - plotly
 
   # ## ---- Astro & GW ---- 
-  # - astropy
-  # - gwpy
-
-  # ############################
-  # ## ---- others ----
-  # - threadpoolctl # for now, only used when benchmarking
-  # - xarray 
-  # - snakeviz # visualization of benchmarks
+  - sxs=2023.1.2
 
   ###########################
   ## ---- Pip packages ----
