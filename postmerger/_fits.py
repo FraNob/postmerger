@@ -43,7 +43,9 @@ def load_fit(name):
 class AmplitudeFitPrec6dq10:
     def __init__(self, fit_dict):
         self._fit_amps = fit_dict["amps"]
-        self.t0 = fit_dict["time_from_peak"]
+        self._fit_abs_err = fit_dict["abs_err"]
+        self.t0 = fit_dict["time_from_temop"]
+        self.feature_set = fit_dict["feature_set"]
         ## deduce modes
         self.modes = {}
         for k in self._fit_amps.keys():
@@ -57,6 +59,48 @@ class AmplitudeFitPrec6dq10:
     def __repr__(self):
         out = self._descr
         return out
+
+    def predict_amp(
+        self,
+        delta,
+        chi_s,
+        chi_a,
+        rem_spin_angle,
+        kick_angle,
+        kick_vel,
+        lm,
+        mode,
+        return_std=False,
+    ):
+        """
+        Predict the values of A_lm corresponding to the query points.
+        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
+        Parameters
+        ----------
+        mass_ratio : array_like of shape (n_samples,) or float
+            Mass ratio of the query points.
+
+        chi1z : array_like of shape (n_samples,) or float
+            Projection along the z axis of the primary spin.
+
+        chi2z : array_like of shape (n_samples,) or float
+            Projection along the z axis of the secondary spin.
+
+        lm : tuple_like object
+            Ordered couple (l,m) specifying the angular number l and azimuthal number m of the harmonic.
+
+        mode : tuple_like object
+            Ordered tuple specifying the queried quasi-normal mode.
+            For linear modes, ordered triple (l,m,n).
+            For quadratic modes, ordered couple of the form ((l1,m1,n1),(l2,m2,n2)).
+
+        return_std : bool. Default=False.
+            Whether or not to return the standard deviation of the predictive distribution at the query points.
+            WARNING: As explained in the paper, this is not a good measure of the uncertainty of the surrogate model. Use the predict_abs_err instead.
+        """
+
+        ## TODO: complete classes
 
 
 class AmplitudeFit3dq8:

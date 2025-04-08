@@ -493,5 +493,9 @@ if __name__ == "__main__":
 
             dict_to_save[y_fit][mode] = gpr_pipe
 
+        dict_to_save2 = dict_to_save.copy()
+        for key, obj in dict_to_save2[y_fit].items():
+            dict_to_save[y_fit][key] = {(key[0], key[1], 0): obj}
+
     with open(save_file, "wb") as f:
         joblib.dump(dict_to_save, f)
