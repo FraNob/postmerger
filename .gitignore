@@ -6,6 +6,7 @@ __pycache__
 useful_links.txt
 scripts/
 build/
+dev/
 
 # Compiled python modules.
 *.pyc

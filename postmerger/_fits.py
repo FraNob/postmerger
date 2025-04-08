@@ -379,7 +379,7 @@ class CustomGPR(RegressorMixin,BaseEstimator):
     def __init__(self):
         return None
     
-    def fit(self,X,y,sample_weight=None,normalize_y=True,**kwargs):
+    def fit(self,X,y,sample_weight=None,normalize_y=True, linear_fit:bool=True, **kwargs):
         """
         Fit GPR by first subtracting a linear fit.
 
@@ -407,11 +407,21 @@ class CustomGPR(RegressorMixin,BaseEstimator):
             alpha = 1e-10
         else:
             alpha=1/sample_weight
-        self._linear_fit(X,y,sample_weight=sample_weight)
-        self._gpr_fit(X,y,alpha=alpha,\
-                    normalize_y=normalize_y,\
-                    n_restarts_optimizer=0,\
-                    **kwargs)
+        
+        self.linear_fit = linear_fit
+        self.normalize_y = normalize_y
+        
+        if self.linear_fit:
+            self._linear_fit(X,y,sample_weight=sample_weight)
+            self._gpr_fit(X,y,alpha=alpha,\
+                        normalize_y=normalize_y,\
+                        n_restarts_optimizer=0,\
+                        **kwargs)
+        else:
+            self._gpr_fit(X,y,alpha=alpha,\
+                        normalize_y=normalize_y,\
+                        n_restarts_optimizer=0,\
+                        **kwargs)
         return None
 
     def predict(self,X,return_std=False):
@@ -546,8 +556,12 @@ class CustomGPR(RegressorMixin,BaseEstimator):
                    white_kernel=True)
         self.gpr = Pipeline([('scaler',StandardScaler()),\
                               ('gpr',GPR(kernel=kernel,**kwargs))])
-        y_lin = self.lin.predict(X)
-        self.gpr.fit(X,y-y_lin)
+        if self.linear_fit:
+            y_lin = self.lin.predict(X)
+            self.gpr.fit(X,y-y_lin)
+        else:
+            self.gpr.fit(X,y)
+
         return None
 
     def _prepare_kernel(self,X_dim,white_kernel=False):
