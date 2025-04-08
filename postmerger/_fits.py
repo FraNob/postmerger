@@ -379,7 +379,8 @@ class CustomGPR(RegressorMixin,BaseEstimator):
     def __init__(self):
         return None
     
-    def fit(self,X,y,sample_weight=None,normalize_y=True, linear_fit:bool=True, **kwargs):
+    def fit(self,X,y,sample_weight=None,normalize_y=True, 
+            linear_fit:bool=True, precessing=False, **kwargs):
         """
         Fit GPR by first subtracting a linear fit.
 
@@ -408,8 +409,8 @@ class CustomGPR(RegressorMixin,BaseEstimator):
         else:
             alpha=1/sample_weight
         
-        self.linear_fit = linear_fit
-        self.normalize_y = normalize_y
+        self.linear_fit = linear_fit ## Need this because precessing are done without linear fit
+        self.precessing = precessing ## used in _prepare_kernel(). Need this because precessing are initialised with different base kernel length_scale
         
         if self.linear_fit:
             self._linear_fit(X,y,sample_weight=sample_weight)
@@ -444,15 +445,23 @@ class CustomGPR(RegressorMixin,BaseEstimator):
         y_std : array_like of shape (n_samples,) or (n_samples, n_targets), optional
             Standard deviation of the predictive distribution at the query points X.
             Only returned when return_std=True.
-        """
-        if return_std:
-            out, std = self.gpr.predict(X,return_std=True)
-            out += self.lin.predict(X)
-            return out, std
+        """        
+        if self.linear_fit:
+            if return_std:
+                out, std = self.gpr.predict(X,return_std=True)
+                out += self.lin.predict(X)
+                return out, std
+            else:
+                out = self.gpr.predict(X,return_std=False)
+                out += self.lin.predict(X)
+                return out
         else:
-            out = self.gpr.predict(X,return_std=False)
-            out += self.lin.predict(X)
-            return out
+            if return_std:
+                out, std = self.gpr.predict(X,return_std=True)
+                return out, std
+            else:
+                out = self.gpr.predict(X,return_std=False)
+                return out
 
     def rms_score(self,X,y_true,sample_weight=None):
         """
@@ -538,10 +547,11 @@ class CustomGPR(RegressorMixin,BaseEstimator):
         """
         X_transformed = self.gpr['scaler'].transform(X)
         out = self.gpr['gpr'].sample_y(X_transformed,n_samples=n_samples,random_state=random_state)
-        if len(out.shape)==2:
-            out += self.lin.predict(X)[:,np.newaxis]
-        elif len(out.shape)==3:
-            out += self.lin.predict(X)[:,:,np.newaxis]
+        if self.linear_fit:
+            if len(out.shape)==2:
+                out += self.lin.predict(X)[:,np.newaxis]
+            elif len(out.shape)==3:
+                out += self.lin.predict(X)[:,:,np.newaxis]
         return out
 
     def _linear_fit(self,X,y,sample_weight=None):
@@ -565,10 +575,20 @@ class CustomGPR(RegressorMixin,BaseEstimator):
         return None
 
     def _prepare_kernel(self,X_dim,white_kernel=False):
-        kernel1 = RBF(length_scale=np.ones((X_dim,)),length_scale_bounds=(1e-10,1e5))
-        kernel2 = ConstantKernel(constant_value_bounds=(1e-5,1e5))
-        kernel = kernel1*kernel2
-        if white_kernel:
-            kernel3 = WhiteKernel(noise_level=1,noise_level_bounds=(1e-10,1e2))
-            kernel += kernel3
+        if self.precessing: ## I used different initial length_scale for precessing
+            kernel1 = RBF(
+                length_scale=np.ones((X_dim,)) * 0.2, length_scale_bounds=(1e-10, 1e5)
+            )
+            kernel2 = ConstantKernel()
+            kernel = kernel1 * kernel2
+            if white_kernel:
+                kernel3 = WhiteKernel(noise_level=1, noise_level_bounds=(1e-10, 1e2))
+                kernel += kernel3   
+        else:
+            kernel1 = RBF(length_scale=np.ones((X_dim,)),length_scale_bounds=(1e-10,1e5))
+            kernel2 = ConstantKernel(constant_value_bounds=(1e-5,1e5))
+            kernel = kernel1*kernel2
+            if white_kernel:
+                kernel3 = WhiteKernel(noise_level=1,noise_level_bounds=(1e-10,1e2))
+                kernel += kernel3
         return kernel
