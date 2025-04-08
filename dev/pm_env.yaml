@@ -1,0 +1,48 @@
+name: pm_env
+
+channels:
+  - conda-forge
+  # - nodefaults
+  # - pytorch
+  # - nvidia
+  - defaults
+
+dependencies:
+  ## ---- Base ----
+  - python
+  - h5py
+  - pandas>=1.2.4
+  - tqdm
+  - joblib>=1.3.2
+  - yaml
+  - pip
+
+  ## ---- Maths ----
+  - numpy<2.0.0
+  - scipy>=1.10.1
+  - scikit-learn>=1.5.0
+
+  ## ---- jupyter ----
+  - jupyter
+  - jupyterlab
+  - ipympl
+
+  ## ---- Plotting libraries ----
+  - matplotlib
+  # - plotly
+
+  # ## ---- Astro & GW ---- 
+  # - astropy
+  # - gwpy
+
+  # ############################
+  # ## ---- others ----
+  # - threadpoolctl # for now, only used when benchmarking
+  # - xarray 
+  # - snakeviz # visualization of benchmarks
+
+  ###########################
+  ## ---- Pip packages ----
+  # - pip:
+  #   - lisaconstants==1.3.4
+  
