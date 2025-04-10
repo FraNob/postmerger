@@ -475,6 +475,7 @@ class AmplitudeFit3dq8:
         out = amp * np.exp(-DT * inv_tau)
         return out
 
+
     def _shift_phase(
         self, phase, mass_ratio, chi1z, chi2z, lm, mode, start_time, qnm_method="interp"
     ):
@@ -556,7 +557,7 @@ class CustomGPR(RegressorMixin, BaseEstimator):
         )
         self.precessing = precessing  ## used in _prepare_kernel(). Need this because precessing are initialised with different base kernel length_scale
 
-        if self.linear_fit:
+        if linear_fit:
             self._linear_fit(X, y, sample_weight=sample_weight)
             self._gpr_fit(
                 X,
@@ -598,6 +599,10 @@ class CustomGPR(RegressorMixin, BaseEstimator):
             Standard deviation of the predictive distribution at the query points X.
             Only returned when return_std=True.
         """
+        ## If self.linear_fit is not found, create and set to True (means that these are the old models)
+        if not hasattr(self, "linear_fit"):
+            self.linear_fit = True
+        
         if self.linear_fit:
             if return_std:
                 out, std = self.gpr.predict(X, return_std=True)
@@ -712,6 +717,10 @@ class CustomGPR(RegressorMixin, BaseEstimator):
         out = self.gpr["gpr"].sample_y(
             X_transformed, n_samples=n_samples, random_state=random_state
         )
+        
+        ## If self.linear_fit is not found, create and set to True (means that these are the old models)
+        if not hasattr(self, "linear_fit"):
+            self.linear_fit = True
         if self.linear_fit:
             if len(out.shape) == 2:
                 out += self.lin.predict(X)[:, np.newaxis]
