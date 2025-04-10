@@ -37,9 +37,9 @@ if __name__ == "__main__":
 
     save_filepath = "/home/fra/ringdown/postmerger/postmerger/data/trained_models/"
     if features == "X_7d_ISCO":
-        save_file = save_filepath + "Prec7dq10.pkl"
+        save_file = save_filepath + "Prec7dq10_20M_gpr.pkl"
     elif features == "X_6d_theta":
-        save_file = save_filepath + "Prec6dq10.pkl"
+        save_file = save_filepath + "Prec6dq10_20M_gpr.pkl"
     else:
         raise ValueError("Invalid 'features' argument. Choose one of the available")
 

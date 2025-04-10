@@ -15,10 +15,12 @@ import os
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
 
-allowed_fits = ["3dq8_20M"]
+allowed_fits = ["3dq8_20M", "Prec6dq10_20M", "Prec7dq10_20M"]
 
 fit_descr = {
-    "3dq8_20M": "3dq8_20M models ampitudes and phases of the ringdown from a quasi-circular, non-precessing black-hole binary.\nIt is calibrated up to mass ratio 8 and at a starting time 20M from the peak of the (2,2) strain."
+    "3dq8_20M": "3dq8_20M models amplitudes and phases of the ringdown from a quasi-circular, non-precessing black-hole binary.\nIt is calibrated up to mass ratio 8 and at a starting time 20M from the peak of the (2,2) strain.",
+    "Prec6dq10_20M": "Prec6dq10_20M models amplitudes of the ringdown from a quasi-circular, precessing black-hole binary.\nIt is calibrated up to mass ratio 10 and at a starting time 20M from t_emop of the simulation.\nIt also provides an uncertainty estimate calibrated on the cross-validation absolute error on the amplitude values.",
+    "Prec7dq10_20M": "Prec7dq10_20M models amplitudes of the ringdown from a quasi-circular, precessing black-hole binary.\nIt is calibrated up to mass ratio 10 and at a starting time 20M from t_emop of the simulation.\nIt also provides an uncertainty estimate calibrated on the cross-validation absolute error on the amplitude values.",
 }
 
 
@@ -37,15 +39,83 @@ def load_fit(name):
     if "3dq8" in name:
         model = AmplitudeFit3dq8(fit_dict)
         model._descr = fit_descr[name]
+    elif "Prec6dq10" in name:
+        model = AmplitudeFitPrec6dq10(fit_dict)
+        model._descr = fit_descr[name]
+    elif "Prec7dq10" in name:
+        model = AmplitudeFitPrec7dq10(fit_dict)
+        model._descr = fit_descr[name]
+    else:
+        raise ValueError("name must be one of " + str(allowed_fits))
     return model
+
+
+def _shift_amp_general(
+    self, amp, final_mass_val, final_spin_val, lm, mode, start_time, qnm_method="interp"
+):
+    """
+    Shift the amplitude of the ringdown waveform to a different time.
+    Note that start_time depends on the model used.
+    For spin-aligned models, start_time is the time from the peak of |h_{22}|. Default is 20.
+    For 6dq10 models, start_time is the time from t_emop. Default is 20."""
+
+    if start_time == self.t0:
+        return amp
+    DT = start_time - self.t0
+
+    mf = final_mass_val
+    sf = final_spin_val
+    if hasattr(mode[0], "__len__"):
+        ## handle quadratic mode
+        inv_tau = 0.0
+        for linear_mode in mode:
+            inv_tau += (
+                1.0
+                / qnm_Kerr(mf, sf, linear_mode, qnm_method=qnm_method, SI_units=False)[
+                    1
+                ]
+            )
+    else:
+        ## handle linear mode
+        inv_tau = 1.0 / qnm_Kerr(mf, sf, mode, qnm_method=qnm_method, SI_units=False)[1]
+    if lm != (2, 2) or mode != (2, 2, 0):
+        inv_tau -= (
+            1.0 / qnm_Kerr(mf, sf, (2, 2, 0), qnm_method=qnm_method, SI_units=False)[1]
+        )
+    out = amp * np.exp(-DT * inv_tau)
+    return out
+
+
+def _make_stacked_array(*args):
+    # Convert all inputs to at least 1D arrays
+    arrays = [np.atleast_1d(arg) for arg in args]
+
+    # Determine target length
+    lengths = [arr.shape[0] for arr in arrays]
+    target_len = max(lengths)
+
+    # Broadcast scalars or shorter arrays to target length
+    broadcasted = []
+    for arr in arrays:
+        if arr.shape[0] == 1 and target_len > 1:
+            arr = np.full(target_len, arr.item())
+        elif arr.shape[0] != target_len:
+            raise ValueError(
+                f"Incompatible shapes: expected {target_len}, got {arr.shape[0]}"
+            )
+        broadcasted.append(arr)
+
+    return np.vstack(broadcasted).T
 
 
 class AmplitudeFitPrec6dq10:
     def __init__(self, fit_dict):
         self._fit_amps = fit_dict["amps"]
         self._fit_abs_err = fit_dict["abs_err"]
+        self._fit_t_emop = fit_dict["t_emop"]
         self.t0 = fit_dict["time_from_temop"]
         self.feature_set = fit_dict["feature_set"]
+
         ## deduce modes
         self.modes = {}
         for k in self._fit_amps.keys():
@@ -71,9 +141,129 @@ class AmplitudeFitPrec6dq10:
         lm,
         mode,
         return_std=False,
+        start_time=None,
+        final_mass_val=None,
+        final_spin_val=None,
     ):
         """
         Predict the values of A_lm corresponding to the query points.
+        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
+        Parameters
+        ----------
+        delta : array_like of shape (n_samples,) or float
+            Asymmetric mass ratio of the query points. delta = (q-1)/(q+1) where q is the mass ratio. q = m1/m2 >= 1.
+
+        chi_s : array_like of shape (n_samples,) or float
+            Symmetric combination of spin components parallel to orbital angular momentum at ISCO.
+            chi_s = (q*chi1z + chi2z)/(q+1) where q = m1/m2 >= 1.
+
+        chi_a : array_like of shape (n_samples,) or float
+            Antisymmetric combination of spin components parallel to orbital angular momentum at ISCO.
+            chi_a = (q*chi1z - chi2z)/(q+1) where q = m1/m2 >= 1.
+
+        rem_spin_angle : array_like of shape (n_samples,) or float
+            Angle between the remnant spin and the orbital angular momentum at ISCO.
+
+        kick_angle : array_like of shape (n_samples,) or float
+            Angle between the remnant spin and the recoil kick velocity.
+
+        kick_vel : array_like of shape (n_samples,) or float
+            Magnitude of the recoil kick velocity.
+
+        lm : tuple_like object
+            Ordered couple (l,m) specifying the angular number l and azimuthal number m of the harmonic.
+
+        mode : tuple_like object
+            Ordered tuple specifying the queried quasi-normal mode.
+            For linear modes, ordered triple (l,m,n).
+            For quadratic modes, ordered couple of the form ((l1,m1,n1),(l2,m2,n2)).
+
+        return_std : bool. Default=False.
+            Whether or not to return the standard deviation of the predictive distribution at the query points.
+            **WARNING**: As explained in the paper, this is not a good measure of uncertainty for the surrogate model. Use the predict_abs_err instead.
+
+        start_time : float or None. Default=None.
+            Start time of the ringdown waveform, relative to t_emop of the simulation.
+            If None (default), assume that start_time=self.t0.
+
+        final_mass_val : float or None. Default=None.
+            Final mass of the remnant black hole. Only used if start_time is not None for retrodiction.
+
+        final_spin_val : float or None. Default=None.
+            Final spin of the remnant black hole. Only used if start_time is not None for retrodiction.
+
+        """
+        X = _make_stacked_array(
+            delta,
+            chi_s,
+            chi_a,
+            rem_spin_angle,
+            kick_angle,
+            kick_vel,
+        )
+
+        if start_time is not None:
+            assert (
+                final_mass_val is not None
+            ), "final_mass_val must be provided if start_time is not None"
+            assert (
+                final_spin_val is not None
+            ), "final_spin_val must be provided if start_time is not None"
+
+        if return_std:
+            amp_abs, std_abs = self._fit_amps[lm][mode].predict(
+                X, return_std=return_std
+            )
+            if start_time is not None:
+                amp_abs = self._shift_amp(
+                    amp_abs,
+                    final_mass_val,
+                    final_spin_val,
+                    lm,
+                    mode,
+                    start_time,
+                )
+                std_abs = self._shift_amp(
+                    std_abs,
+                    final_mass_val,
+                    final_spin_val,
+                    lm,
+                    mode,
+                    start_time,
+                )
+            return amp_abs, std_abs
+
+        else:
+            amp_abs = self._fit_amps[lm][mode].predict(X, return_std=return_std)
+            if start_time is not None:
+                amp_abs = self._shift_amp(
+                    amp_abs,
+                    final_mass_val,
+                    final_spin_val,
+                    lm,
+                    mode,
+                    start_time,
+                )
+            return amp_abs
+
+    def predict_abs_err(
+        self,
+        delta,
+        chi_s,
+        chi_a,
+        rem_spin_angle,
+        kick_angle,
+        kick_vel,
+        lm,
+        mode,
+        return_std=False,
+        start_time=None,
+        final_mass_val=None,
+        final_spin_val=None,
+    ):
+        """
+        Predict the values of the cross-validation absolute error on A_lm corresponding to the query points.
         Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
 
         Parameters
@@ -97,10 +287,489 @@ class AmplitudeFitPrec6dq10:
 
         return_std : bool. Default=False.
             Whether or not to return the standard deviation of the predictive distribution at the query points.
-            WARNING: As explained in the paper, this is not a good measure of the uncertainty of the surrogate model. Use the predict_abs_err instead.
+
+        start_time : float or None. Default=None.
+            Start time of the ringdown waveform, relative to t_emop of the simulation.
+            If None (default), assume that start_time=self.t0.
+
+        final_mass_val : float or None. Default=None.
+            Final mass of the remnant black hole. Only used if start_time is not None for retrodiction.
+
+        final_spin_val : float or None. Default=None.
+            Final spin of the remnant black hole. Only used if start_time is not None for retrodiction.
+
+        """
+        X = _make_stacked_array(
+            delta,
+            chi_s,
+            chi_a,
+            rem_spin_angle,
+            kick_angle,
+            kick_vel,
+        )
+
+        if start_time is not None:
+            assert (
+                final_mass_val is not None
+            ), "final_mass_val must be provided if start_time is not None"
+            assert (
+                final_spin_val is not None
+            ), "final_spin_val must be provided if start_time is not None"
+
+        if return_std:
+            abs_err, abs_err_std = self._fit_abs_err[lm][mode].predict(
+                X, return_std=return_std
+            )
+            if start_time is not None:
+                abs_err = self._shift_amp(
+                    abs_err,
+                    final_mass_val,
+                    final_spin_val,
+                    lm,
+                    mode,
+                    start_time,
+                )
+                abs_err_std = self._shift_amp(
+                    abs_err_std,
+                    final_mass_val,
+                    final_spin_val,
+                    lm,
+                    mode,
+                    start_time,
+                )
+            return abs_err, abs_err_std
+
+        else:
+            abs_err = self._fit_abs_err[lm][mode].predict(X, return_std=return_std)
+            if start_time is not None:
+                abs_err = self._shift_amp(
+                    abs_err,
+                    final_mass_val,
+                    final_spin_val,
+                    lm,
+                    mode,
+                    start_time,
+                )
+            return abs_err
+
+    def predict_t_emop(
+        self,
+        delta,
+        chi_s,
+        chi_a,
+        rem_spin_angle,
+        kick_angle,
+        kick_vel,
+        lm,
+        mode,
+        return_std=False,
+    ):
+        """
+        Predict the value of t_emop with respect to the peak of the L2 norm of the waveform, corresponding to the query points.
+        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
+        Parameters
+        ----------
+        mass_ratio : array_like of shape (n_samples,) or float
+            Mass ratio of the query points.
+
+        chi1z : array_like of shape (n_samples,) or float
+            Projection along the z axis of the primary spin.
+
+        chi2z : array_like of shape (n_samples,) or float
+            Projection along the z axis of the secondary spin.
+
+        lm : tuple_like object
+            Ordered couple (l,m) specifying the angular number l and azimuthal number m of the harmonic.
+
+        mode : tuple_like object
+            Ordered tuple specifying the queried quasi-normal mode.
+            For linear modes, ordered triple (l,m,n).
+            For quadratic modes, ordered couple of the form ((l1,m1,n1),(l2,m2,n2)).
+
+        return_std : bool. Default=False.
+            Whether or not to return the standard deviation of the predictive distribution at the query points.
+
+        """
+        X = _make_stacked_array(
+            delta,
+            chi_s,
+            chi_a,
+            rem_spin_angle,
+            kick_angle,
+            kick_vel,
+        )
+
+        if return_std:
+            abs_err, abs_err_std = self._fit_t_emop.predict(X, return_std=return_std)
+            return abs_err, abs_err_std
+
+        else:
+            abs_err = self._fit_abs_err[lm][mode].predict(X, return_std=return_std)
+            return abs_err
+
+    def _shift_amp(
+        self,
+        amp,
+        final_mass_val,
+        final_spin_val,
+        lm,
+        mode,
+        start_time,
+        qnm_method="interp",
+    ):
+        return _shift_amp_general(
+            self, amp, final_mass_val, final_spin_val, lm, mode, start_time, qnm_method
+        )
+
+
+class AmplitudeFitPrec7dq10:
+    def __init__(self, fit_dict):
+        self._fit_amps = fit_dict["amps"]
+        self._fit_abs_err = fit_dict["abs_err"]
+        self._fit_t_emop = fit_dict["t_emop"]
+        self.t0 = fit_dict["time_from_temop"]
+        self.feature_set = fit_dict["feature_set"]
+
+        ## deduce modes
+        self.modes = {}
+        for k in self._fit_amps.keys():
+            if k[1] >= 0:
+                self.modes[k] = [mode for mode in self._fit_amps[k].keys()]
+
+    def __print__(self):
+        out = self._descr
+        return out
+
+    def __repr__(self):
+        out = self._descr
+        return out
+
+    def predict_amp(
+        self,
+        delta,
+        chi1_x,
+        chi1_y,
+        chi1_z,
+        chi2_x,
+        chi2_y,
+        chi2_z,
+        lm,
+        mode,
+        return_std=False,
+        start_time=None,
+        final_mass_val=None,
+        final_spin_val=None,
+    ):
+        """
+        Predict the values of A_lm corresponding to the query points.
+        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
+        Parameters
+        ----------
+        delta : array_like of shape (n_samples,) or float
+            Asymmetric mass ratio of the query points. delta = (q-1)/(q+1) where q is the mass ratio. q = m1/m2 >= 1.
+
+        chi1_x : array_like of shape (n_samples,) or float
+            x-component of the primary spin at ISCO.
+
+        chi1_y : array_like of shape (n_samples,) or float
+            y-component of the primary spin at ISCO.
+
+        chi1_z : array_like of shape (n_samples,) or float
+            z-component of the primary spin at ISCO.
+
+        chi2_x : array_like of shape (n_samples,) or float
+            x-component of the secondary spin at ISCO.
+
+        chi2_y : array_like of shape (n_samples,) or float
+            y-component of the secondary spin at ISCO.
+
+        chi2_z : array_like of shape (n_samples,) or float
+            z-component of the secondary spin at ISCO.
+
+        lm : tuple_like object
+            Ordered couple (l,m) specifying the angular number l and azimuthal number m of the harmonic.
+
+        mode : tuple_like object
+            Ordered tuple specifying the queried quasi-normal mode.
+            For linear modes, ordered triple (l,m,n).
+            For quadratic modes, ordered couple of the form ((l1,m1,n1),(l2,m2,n2)).
+
+        return_std : bool. Default=False.
+            Whether or not to return the standard deviation of the predictive distribution at the query points.
+            **WARNING**: As explained in the paper, this is not a good measure of uncertainty for the surrogate model. Use the predict_abs_err instead.
+
+        start_time : float or None. Default=None.
+            Start time of the ringdown waveform, relative to t_emop of the simulation.
+            If None (default), assume that start_time=self.t0.
+
+        final_mass_val : float or None. Default=None.
+            Final mass of the remnant black hole. Only used if start_time is not None for retrodiction.
+
+        final_spin_val : float or None. Default=None.
+            Final spin of the remnant black hole. Only used if start_time is not None for retrodiction.
+
         """
 
-        ## TODO: complete classes
+        X = _make_stacked_array(
+            delta,
+            chi1_x,
+            chi1_y,
+            chi1_z,
+            chi2_x,
+            chi2_y,
+            chi2_z,
+        )
+
+        if start_time is not None:
+            assert (
+                final_mass_val is not None
+            ), "final_mass_val must be provided if start_time is not None"
+            assert (
+                final_spin_val is not None
+            ), "final_spin_val must be provided if start_time is not None"
+
+        if return_std:
+            amp_abs, std_abs = self._fit_amps[lm][mode].predict(
+                X, return_std=return_std
+            )
+            if start_time is not None:
+                amp_abs = self._shift_amp(
+                    amp_abs,
+                    final_mass_val,
+                    final_spin_val,
+                    lm,
+                    mode,
+                    start_time,
+                )
+                std_abs = self._shift_amp(
+                    std_abs,
+                    final_mass_val,
+                    final_spin_val,
+                    lm,
+                    mode,
+                    start_time,
+                )
+            return amp_abs, std_abs
+
+        else:
+            amp_abs = self._fit_amps[lm][mode].predict(X, return_std=return_std)
+            if start_time is not None:
+                amp_abs = self._shift_amp(
+                    amp_abs,
+                    final_mass_val,
+                    final_spin_val,
+                    lm,
+                    mode,
+                    start_time,
+                )
+            return amp_abs
+
+    def predict_abs_err(
+        self,
+        delta,
+        chi1_x,
+        chi1_y,
+        chi1_z,
+        chi2_x,
+        chi2_y,
+        chi2_z,
+        lm,
+        mode,
+        return_std=False,
+        start_time=None,
+        final_mass_val=None,
+        final_spin_val=None,
+    ):
+        """
+        Predict the values of the cross-validation absolute error on A_lm corresponding to the query points.
+        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
+        Parameters
+        ----------
+        delta : array_like of shape (n_samples,) or float
+            Asymmetric mass ratio of the query points. delta = (q-1)/(q+1) where q is the mass ratio. q = m1/m2 >= 1.
+
+        chi1_x : array_like of shape (n_samples,) or float
+            x-component of the primary spin at ISCO.
+
+        chi1_y : array_like of shape (n_samples,) or float
+            y-component of the primary spin at ISCO.
+
+        chi1_z : array_like of shape (n_samples,) or float
+            z-component of the primary spin at ISCO.
+
+        chi2_x : array_like of shape (n_samples,) or float
+            x-component of the secondary spin at ISCO.
+
+        chi2_y : array_like of shape (n_samples,) or float
+            y-component of the secondary spin at ISCO.
+
+        chi2_z : array_like of shape (n_samples,) or float
+            z-component of the secondary spin at ISCO.
+
+        lm : tuple_like object
+            Ordered couple (l,m) specifying the angular number l and azimuthal number m of the harmonic.
+
+        mode : tuple_like object
+            Ordered tuple specifying the queried quasi-normal mode.
+            For linear modes, ordered triple (l,m,n).
+            For quadratic modes, ordered couple of the form ((l1,m1,n1),(l2,m2,n2)).
+
+        return_std : bool. Default=False.
+            Whether or not to return the standard deviation of the predictive distribution at the query points.
+
+        start_time : float or None. Default=None.
+            Start time of the ringdown waveform, relative to t_emop of the simulation.
+            If None (default), assume that start_time=self.t0.
+
+        final_mass_val : float or None. Default=None.
+            Final mass of the remnant black hole. Only used if start_time is not None for retrodiction.
+
+        final_spin_val : float or None. Default=None.
+            Final spin of the remnant black hole. Only used if start_time is not None for retrodiction.
+
+        """
+
+        X = _make_stacked_array(
+            delta,
+            chi1_x,
+            chi1_y,
+            chi1_z,
+            chi2_x,
+            chi2_y,
+            chi2_z,
+        )
+
+        if start_time is not None:
+            assert (
+                final_mass_val is not None
+            ), "final_mass_val must be provided if start_time is not None"
+            assert (
+                final_spin_val is not None
+            ), "final_spin_val must be provided if start_time is not None"
+
+        if return_std:
+            abs_err, abs_err_std = self._fit_abs_err[lm][mode].predict(
+                X, return_std=return_std
+            )
+            if start_time is not None:
+                abs_err = self._shift_amp(
+                    abs_err,
+                    final_mass_val,
+                    final_spin_val,
+                    lm,
+                    mode,
+                    start_time,
+                )
+                abs_err_std = self._shift_amp(
+                    abs_err_std,
+                    final_mass_val,
+                    final_spin_val,
+                    lm,
+                    mode,
+                    start_time,
+                )
+            return abs_err, abs_err_std
+
+        else:
+            abs_err = self._fit_abs_err[lm][mode].predict(X, return_std=return_std)
+            if start_time is not None:
+                abs_err = self._shift_amp(
+                    abs_err,
+                    final_mass_val,
+                    final_spin_val,
+                    lm,
+                    mode,
+                    start_time,
+                )
+            return abs_err
+
+    def predict_t_emop(
+        self,
+        delta,
+        chi1_x,
+        chi1_y,
+        chi1_z,
+        chi2_x,
+        chi2_y,
+        chi2_z,
+        lm,
+        mode,
+        return_std=False,
+    ):
+        """
+        Predict the value of t_emop with respect to the peak of the L2 norm of the waveform, corresponding to the query points.
+        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
+        Parameters
+        ----------
+        delta : array_like of shape (n_samples,) or float
+            Asymmetric mass ratio of the query points. delta = (q-1)/(q+1) where q is the mass ratio. q = m1/m2 >= 1.
+
+        chi1_x : array_like of shape (n_samples,) or float
+            x-component of the primary spin at ISCO.
+
+        chi1_y : array_like of shape (n_samples,) or float
+            y-component of the primary spin at ISCO.
+
+        chi1_z : array_like of shape (n_samples,) or float
+            z-component of the primary spin at ISCO.
+
+        chi2_x : array_like of shape (n_samples,) or float
+            x-component of the secondary spin at ISCO.
+
+        chi2_y : array_like of shape (n_samples,) or float
+            y-component of the secondary spin at ISCO.
+
+        chi2_z : array_like of shape (n_samples,) or float
+            z-component of the secondary spin at ISCO.
+
+        lm : tuple_like object
+            Ordered couple (l,m) specifying the angular number l and azimuthal number m of the harmonic.
+
+        mode : tuple_like object
+            Ordered tuple specifying the queried quasi-normal mode.
+            For linear modes, ordered triple (l,m,n).
+            For quadratic modes, ordered couple of the form ((l1,m1,n1),(l2,m2,n2)).
+
+        return_std : bool. Default=False.
+            Whether or not to return the standard deviation of the predictive distribution at the query points.
+
+        """
+
+        X = _make_stacked_array(
+            delta,
+            chi1_x,
+            chi1_y,
+            chi1_z,
+            chi2_x,
+            chi2_y,
+            chi2_z,
+        )
+
+        if return_std:
+            abs_err, abs_err_std = self._fit_t_emop.predict(X, return_std=return_std)
+            return abs_err, abs_err_std
+
+        else:
+            abs_err = self._fit_abs_err[lm][mode].predict(X, return_std=return_std)
+            return abs_err
+
+    def _shift_amp(
+        self,
+        amp,
+        final_mass_val,
+        final_spin_val,
+        lm,
+        mode,
+        start_time,
+        qnm_method="interp",
+    ):
+        return _shift_amp_general(
+            self, amp, final_mass_val, final_spin_val, lm, mode, start_time, qnm_method
+        )
 
 
 class AmplitudeFit3dq8:
@@ -440,6 +1109,7 @@ class AmplitudeFit3dq8:
         eta = np.clip(mass_ratio / (1 + mass_ratio) ** 2, 0, 0.25)
         delta = np.sqrt(1 - 4 * eta)
         out = np.vstack((delta, chip, chim)).T
+        print("X shape", out.shape)
         return out
 
     def _shift_amp(
@@ -474,7 +1144,6 @@ class AmplitudeFit3dq8:
             )
         out = amp * np.exp(-DT * inv_tau)
         return out
-
 
     def _shift_phase(
         self, phase, mass_ratio, chi1z, chi2z, lm, mode, start_time, qnm_method="interp"
@@ -522,7 +1191,7 @@ class CustomGPR(RegressorMixin, BaseEstimator):
         normalize_y=True,
         linear_fit: bool = True,
         precessing=False,
-        **kwargs
+        **kwargs,
     ):
         """
         Fit GPR by first subtracting a linear fit.
@@ -565,7 +1234,7 @@ class CustomGPR(RegressorMixin, BaseEstimator):
                 alpha=alpha,
                 normalize_y=normalize_y,
                 n_restarts_optimizer=0,
-                **kwargs
+                **kwargs,
             )
         else:
             self._gpr_fit(
@@ -574,7 +1243,7 @@ class CustomGPR(RegressorMixin, BaseEstimator):
                 alpha=alpha,
                 normalize_y=normalize_y,
                 n_restarts_optimizer=0,
-                **kwargs
+                **kwargs,
             )
         return None
 
@@ -602,7 +1271,7 @@ class CustomGPR(RegressorMixin, BaseEstimator):
         ## If self.linear_fit is not found, create and set to True (means that these are the old models)
         if not hasattr(self, "linear_fit"):
             self.linear_fit = True
-        
+
         if self.linear_fit:
             if return_std:
                 out, std = self.gpr.predict(X, return_std=True)
@@ -717,7 +1386,7 @@ class CustomGPR(RegressorMixin, BaseEstimator):
         out = self.gpr["gpr"].sample_y(
             X_transformed, n_samples=n_samples, random_state=random_state
         )
-        
+
         ## If self.linear_fit is not found, create and set to True (means that these are the old models)
         if not hasattr(self, "linear_fit"):
             self.linear_fit = True
