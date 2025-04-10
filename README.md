@@ -8,6 +8,8 @@
 
 - `3dq8_20M`: Ringdown amplitudes from non-precessing, quasi-circular black-hole binaries. Calibrated at $20M$ after the peak of the $(2,2)$ strain. See the example notebook [3dq8_20M](examples/3dq8_20M.ipynb) for usage details. Described in the following paper: [2408.05276](https://arxiv.org/abs/2408.05276) .
 
+- `Prec6dq10_20M`, `Prec7dq10_20M`: Ringdown amplitudes from precessing, quasi-circular black-hole binaries. Calibrated at $20M$ after $t_{\rm EMOP}$. See the example notebook [Prec_models](examples/Prec_models.ipynb) for usage details. Described in the following paper: [XXXXXXXX]() .
+
 ## Installation
 
 ### From source
@@ -28,7 +30,7 @@ import postmerger
 
 ```python
 postmerger.allowed_fits
->>> ['3dq8_20M']
+>>> ['3dq8_20M','Prec6dq10_20M', 'Prec7dq10_20M']
 ```
 
 ### Load fit
@@ -43,6 +45,7 @@ fit = postmerger.load_fit(fitname)
 Predicting amplitudes and phases is performed through the `predict_amp` and `predict_phase` methods of `fit`. The arguments are model-specific. See the notebooks below for examples of specific models:
 
 - [3dq8_20M](examples/3dq8_20M.ipynb)
+- [Prec_models](examples/Prec_models.ipynb)
 
 ### Evaluate quasi-normal modes of Kerr black holes
 
@@ -132,6 +135,7 @@ print('final orientation: ',np.cos(thetaf))
 To help reproducibility, we provide data on which our model were trained:
 
 - [data_for_3dq8_20M](examples/data_for_3dq8_20M.ipynb)
+- [data_for_precessing_models]()
 
 ## Citation
 
@@ -148,7 +152,6 @@ If you use `postmerger` in your work, please cite the following entries:
     year = {2024}
 }
 ```
-
 
 
 ```latex
