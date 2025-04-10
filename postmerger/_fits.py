@@ -113,6 +113,7 @@ class AmplitudeFitPrec6dq10:
         self._fit_amps = fit_dict["amps"]
         self._fit_abs_err = fit_dict["abs_err"]
         self._fit_t_emop = fit_dict["t_emop"]
+        self._fit_t_emop_abs_err = fit_dict["t_emop_abs_err"]
         self.t0 = fit_dict["time_from_temop"]
         self.feature_set = fit_dict["feature_set"]
 
@@ -263,7 +264,7 @@ class AmplitudeFitPrec6dq10:
         final_spin_val=None,
     ):
         """
-        Predict the values of the cross-validation absolute error on A_lm corresponding to the query points.
+        Predict the cross-validation absolute error on A_lm corresponding to the query points.
         Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
 
         Parameters
@@ -352,7 +353,7 @@ class AmplitudeFitPrec6dq10:
                 )
             return abs_err
 
-    def predict_t_emop(
+    def sample_amp(
         self,
         delta,
         chi_s,
@@ -362,22 +363,36 @@ class AmplitudeFitPrec6dq10:
         kick_vel,
         lm,
         mode,
-        return_std=False,
+        n_samples=1,
+        start_time=None,
+        final_mass_val=None,
+        final_spin_val=None,
     ):
         """
-        Predict the value of t_emop with respect to the peak of the L2 norm of the waveform, corresponding to the query points.
+        Sample the values of A_lm corresponding to the query points.
         Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
 
         Parameters
         ----------
-        mass_ratio : array_like of shape (n_samples,) or float
-            Mass ratio of the query points.
+        delta : array_like of shape (n_samples,) or float
+            Asymmetric mass ratio of the query points. delta = (q-1)/(q+1) where q is the mass ratio. q = m1/m2 >= 1.
 
-        chi1z : array_like of shape (n_samples,) or float
-            Projection along the z axis of the primary spin.
+        chi_s : array_like of shape (n_samples,) or float
+            Symmetric combination of spin components parallel to orbital angular momentum at ISCO.
+            chi_s = (q*chi1z + chi2z)/(q+1) where q = m1/m2 >= 1.
 
-        chi2z : array_like of shape (n_samples,) or float
-            Projection along the z axis of the secondary spin.
+        chi_a : array_like of shape (n_samples,) or float
+            Antisymmetric combination of spin components parallel to orbital angular momentum at ISCO.
+            chi_a = (q*chi1z - chi2z)/(q+1) where q = m1/m2 >= 1.
+
+        rem_spin_angle : array_like of shape (n_samples,) or float
+            Angle between the remnant spin and the orbital angular momentum at ISCO.
+
+        kick_angle : array_like of shape (n_samples,) or float
+            Angle between the remnant spin and the recoil kick velocity.
+
+        kick_vel : array_like of shape (n_samples,) or float
+            Magnitude of the recoil kick velocity.
 
         lm : tuple_like object
             Ordered couple (l,m) specifying the angular number l and azimuthal number m of the harmonic.
@@ -386,6 +401,86 @@ class AmplitudeFitPrec6dq10:
             Ordered tuple specifying the queried quasi-normal mode.
             For linear modes, ordered triple (l,m,n).
             For quadratic modes, ordered couple of the form ((l1,m1,n1),(l2,m2,n2)).
+
+        return_std : bool. Default=False.
+            Whether or not to return the standard deviation of the predictive distribution at the query points.
+            **WARNING**: As explained in the paper, this is not a good measure of uncertainty for the surrogate model. Use the predict_abs_err instead.
+
+        start_time : float or None. Default=None.
+            Start time of the ringdown waveform, relative to t_emop of the simulation.
+            If None (default), assume that start_time=self.t0.
+
+        final_mass_val : float or None. Default=None.
+            Final mass of the remnant black hole. Only used if start_time is not None for retrodiction.
+
+        final_spin_val : float or None. Default=None.
+            Final spin of the remnant black hole. Only used if start_time is not None for retrodiction.
+
+        """
+        X = _make_stacked_array(
+            delta,
+            chi_s,
+            chi_a,
+            rem_spin_angle,
+            kick_angle,
+            kick_vel,
+        )
+
+        if start_time is not None:
+            assert (
+                final_mass_val is not None
+            ), "final_mass_val must be provided if start_time is not None"
+            assert (
+                final_spin_val is not None
+            ), "final_spin_val must be provided if start_time is not None"
+
+        amp_abs = self._fit_amps[lm][mode].sample_y(X, n_samples=n_samples)
+        if start_time is not None:
+            amp_abs = self._shift_amp(
+                amp_abs,
+                final_mass_val,
+                final_spin_val,
+                lm,
+                mode,
+                start_time,
+            )
+        return amp_abs
+
+    def predict_t_emop(
+        self,
+        delta,
+        chi_s,
+        chi_a,
+        rem_spin_angle,
+        kick_angle,
+        kick_vel,
+        return_std=False,
+    ):
+        """
+        Predict the value of t_emop with respect to the peak of the L2 norm of the waveform, corresponding to the query points.
+        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
+        Parameters
+        ----------
+        delta : array_like of shape (n_samples,) or float
+            Asymmetric mass ratio of the query points. delta = (q-1)/(q+1) where q is the mass ratio. q = m1/m2 >= 1.
+
+        chi_s : array_like of shape (n_samples,) or float
+            Symmetric combination of spin components parallel to orbital angular momentum at ISCO.
+            chi_s = (q*chi1z + chi2z)/(q+1) where q = m1/m2 >= 1.
+
+        chi_a : array_like of shape (n_samples,) or float
+            Antisymmetric combination of spin components parallel to orbital angular momentum at ISCO.
+            chi_a = (q*chi1z - chi2z)/(q+1) where q = m1/m2 >= 1.
+
+        rem_spin_angle : array_like of shape (n_samples,) or float
+            Angle between the remnant spin and the orbital angular momentum at ISCO.
+
+        kick_angle : array_like of shape (n_samples,) or float
+            Angle between the remnant spin and the recoil kick velocity.
+
+        kick_vel : array_like of shape (n_samples,) or float
+            Magnitude of the recoil kick velocity.
 
         return_std : bool. Default=False.
             Whether or not to return the standard deviation of the predictive distribution at the query points.
@@ -401,12 +496,122 @@ class AmplitudeFitPrec6dq10:
         )
 
         if return_std:
-            abs_err, abs_err_std = self._fit_t_emop.predict(X, return_std=return_std)
-            return abs_err, abs_err_std
+            t_emop, t_emop_std = self._fit_t_emop.predict(X, return_std=return_std)
+            return t_emop, t_emop_std
 
         else:
-            abs_err = self._fit_abs_err[lm][mode].predict(X, return_std=return_std)
-            return abs_err
+            t_emop = self._fit_t_emop.predict(X, return_std=return_std)
+            return t_emop
+
+    def predict_t_emop_abs_err(
+        self,
+        delta,
+        chi_s,
+        chi_a,
+        rem_spin_angle,
+        kick_angle,
+        kick_vel,
+        return_std=False,
+    ):
+        """
+        Predict the value of t_emop with respect to the peak of the L2 norm of the waveform, corresponding to the query points.
+        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
+        Parameters
+        ----------
+        delta : array_like of shape (n_samples,) or float
+            Asymmetric mass ratio of the query points. delta = (q-1)/(q+1) where q is the mass ratio. q = m1/m2 >= 1.
+
+        chi_s : array_like of shape (n_samples,) or float
+            Symmetric combination of spin components parallel to orbital angular momentum at ISCO.
+            chi_s = (q*chi1z + chi2z)/(q+1) where q = m1/m2 >= 1.
+
+        chi_a : array_like of shape (n_samples,) or float
+            Antisymmetric combination of spin components parallel to orbital angular momentum at ISCO.
+            chi_a = (q*chi1z - chi2z)/(q+1) where q = m1/m2 >= 1.
+
+        rem_spin_angle : array_like of shape (n_samples,) or float
+            Angle between the remnant spin and the orbital angular momentum at ISCO.
+
+        kick_angle : array_like of shape (n_samples,) or float
+            Angle between the remnant spin and the recoil kick velocity.
+
+        kick_vel : array_like of shape (n_samples,) or float
+            Magnitude of the recoil kick velocity.
+
+        return_std : bool. Default=False.
+            Whether or not to return the standard deviation of the predictive distribution at the query points.
+
+        """
+        X = _make_stacked_array(
+            delta,
+            chi_s,
+            chi_a,
+            rem_spin_angle,
+            kick_angle,
+            kick_vel,
+        )
+
+        if return_std:
+            t_emop_abs_err, t_emop_abs_err_std = self._fit_t_emop_abs_err.predict(
+                X, return_std=return_std
+            )
+            return t_emop_abs_err, t_emop_abs_err_std
+
+        else:
+            t_emop_abs_err = self._fit_t_emop_abs_err.predict(X, return_std=return_std)
+            return t_emop_abs_err
+
+    def sample_t_emop(
+        self,
+        delta,
+        chi_s,
+        chi_a,
+        rem_spin_angle,
+        kick_angle,
+        kick_vel,
+        n_samples=1,
+    ):
+        """
+        Sample the value of t_emop with respect to the peak of the L2 norm of the waveform, corresponding to the query points.
+        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
+        Parameters
+        ----------
+        delta : array_like of shape (n_samples,) or float
+            Asymmetric mass ratio of the query points. delta = (q-1)/(q+1) where q is the mass ratio. q = m1/m2 >= 1.
+
+        chi_s : array_like of shape (n_samples,) or float
+            Symmetric combination of spin components parallel to orbital angular momentum at ISCO.
+            chi_s = (q*chi1z + chi2z)/(q+1) where q = m1/m2 >= 1.
+
+        chi_a : array_like of shape (n_samples,) or float
+            Antisymmetric combination of spin components parallel to orbital angular momentum at ISCO.
+            chi_a = (q*chi1z - chi2z)/(q+1) where q = m1/m2 >= 1.
+
+        rem_spin_angle : array_like of shape (n_samples,) or float
+            Angle between the remnant spin and the orbital angular momentum at ISCO.
+
+        kick_angle : array_like of shape (n_samples,) or float
+            Angle between the remnant spin and the recoil kick velocity.
+
+        kick_vel : array_like of shape (n_samples,) or float
+            Magnitude of the recoil kick velocity.
+
+        n_samples : int
+            Number of samples to draw from the predictive distribution.
+        """
+        X = _make_stacked_array(
+            delta,
+            chi_s,
+            chi_a,
+            rem_spin_angle,
+            kick_angle,
+            kick_vel,
+        )
+
+        t_emop = self._fit_t_emop.sample_y(X, n_samples=n_samples)
+        return t_emop
 
     def _shift_amp(
         self,
@@ -428,6 +633,7 @@ class AmplitudeFitPrec7dq10:
         self._fit_amps = fit_dict["amps"]
         self._fit_abs_err = fit_dict["abs_err"]
         self._fit_t_emop = fit_dict["t_emop"]
+        self._fit_t_emop_abs_err = fit_dict["t_emop_abs_err"]
         self.t0 = fit_dict["time_from_temop"]
         self.feature_set = fit_dict["feature_set"]
 
@@ -686,7 +892,7 @@ class AmplitudeFitPrec7dq10:
                 )
             return abs_err
 
-    def predict_t_emop(
+    def sample_amp(
         self,
         delta,
         chi1_x,
@@ -697,10 +903,13 @@ class AmplitudeFitPrec7dq10:
         chi2_z,
         lm,
         mode,
-        return_std=False,
+        n_samples=1,
+        start_time=None,
+        final_mass_val=None,
+        final_spin_val=None,
     ):
         """
-        Predict the value of t_emop with respect to the peak of the L2 norm of the waveform, corresponding to the query points.
+        Draw samples of A_lm from the predictive distribution corresponding to the query points.
         Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
 
         Parameters
@@ -734,6 +943,89 @@ class AmplitudeFitPrec7dq10:
             For linear modes, ordered triple (l,m,n).
             For quadratic modes, ordered couple of the form ((l1,m1,n1),(l2,m2,n2)).
 
+        n_samples : int
+            Number of samples to draw from the predictive distribution.
+
+        start_time : float or None. Default=None.
+            Start time of the ringdown waveform, relative to t_emop of the simulation.
+            If None (default), assume that start_time=self.t0.
+
+        final_mass_val : float or None. Default=None.
+            Final mass of the remnant black hole. Only used if start_time is not None for retrodiction.
+
+        final_spin_val : float or None. Default=None.
+            Final spin of the remnant black hole. Only used if start_time is not None for retrodiction.
+
+        """
+
+        X = _make_stacked_array(
+            delta,
+            chi1_x,
+            chi1_y,
+            chi1_z,
+            chi2_x,
+            chi2_y,
+            chi2_z,
+        )
+
+        if start_time is not None:
+            assert (
+                final_mass_val is not None
+            ), "final_mass_val must be provided if start_time is not None"
+            assert (
+                final_spin_val is not None
+            ), "final_spin_val must be provided if start_time is not None"
+
+        amp_abs = self._fit_amps[lm][mode].sample_y(X, n_samples=n_samples)
+        if start_time is not None:
+            amp_abs = self._shift_amp(
+                amp_abs,
+                final_mass_val,
+                final_spin_val,
+                lm,
+                mode,
+                start_time,
+            )
+        return amp_abs
+
+    def predict_t_emop(
+        self,
+        delta,
+        chi1_x,
+        chi1_y,
+        chi1_z,
+        chi2_x,
+        chi2_y,
+        chi2_z,
+        return_std=False,
+    ):
+        """
+        Predict the value of t_emop with respect to the peak of the L2 norm of the waveform, corresponding to the query points.
+        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
+        Parameters
+        ----------
+        delta : array_like of shape (n_samples,) or float
+            Asymmetric mass ratio of the query points. delta = (q-1)/(q+1) where q is the mass ratio. q = m1/m2 >= 1.
+
+        chi1_x : array_like of shape (n_samples,) or float
+            x-component of the primary spin at ISCO.
+
+        chi1_y : array_like of shape (n_samples,) or float
+            y-component of the primary spin at ISCO.
+
+        chi1_z : array_like of shape (n_samples,) or float
+            z-component of the primary spin at ISCO.
+
+        chi2_x : array_like of shape (n_samples,) or float
+            x-component of the secondary spin at ISCO.
+
+        chi2_y : array_like of shape (n_samples,) or float
+            y-component of the secondary spin at ISCO.
+
+        chi2_z : array_like of shape (n_samples,) or float
+            z-component of the secondary spin at ISCO.
+
         return_std : bool. Default=False.
             Whether or not to return the standard deviation of the predictive distribution at the query points.
 
@@ -750,12 +1042,128 @@ class AmplitudeFitPrec7dq10:
         )
 
         if return_std:
-            abs_err, abs_err_std = self._fit_t_emop.predict(X, return_std=return_std)
-            return abs_err, abs_err_std
+            t_emop, t_emop_std = self._fit_t_emop.predict(X, return_std=return_std)
+            return t_emop, t_emop_std
 
         else:
-            abs_err = self._fit_abs_err[lm][mode].predict(X, return_std=return_std)
-            return abs_err
+            t_emop = self._fit_t_emop.predict(X, return_std=return_std)
+            return t_emop
+
+    def predict_t_emop_abs_err(
+        self,
+        delta,
+        chi1_x,
+        chi1_y,
+        chi1_z,
+        chi2_x,
+        chi2_y,
+        chi2_z,
+        return_std=False,
+    ):
+        """
+        Predict the absolute error on t_emop with respect to the peak of the L2 norm of the waveform, corresponding to the query points.
+        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
+        Parameters
+        ----------
+        delta : array_like of shape (n_samples,) or float
+            Asymmetric mass ratio of the query points. delta = (q-1)/(q+1) where q is the mass ratio. q = m1/m2 >= 1.
+
+        chi1_x : array_like of shape (n_samples,) or float
+            x-component of the primary spin at ISCO.
+
+        chi1_y : array_like of shape (n_samples,) or float
+            y-component of the primary spin at ISCO.
+
+        chi1_z : array_like of shape (n_samples,) or float
+            z-component of the primary spin at ISCO.
+
+        chi2_x : array_like of shape (n_samples,) or float
+            x-component of the secondary spin at ISCO.
+
+        chi2_y : array_like of shape (n_samples,) or float
+            y-component of the secondary spin at ISCO.
+
+        chi2_z : array_like of shape (n_samples,) or float
+            z-component of the secondary spin at ISCO.
+
+        return_std : bool. Default=False.
+            Whether or not to return the standard deviation of the predictive distribution at the query points.
+
+        """
+        X = _make_stacked_array(
+            delta,
+            chi1_x,
+            chi1_y,
+            chi1_z,
+            chi2_x,
+            chi2_y,
+            chi2_z,
+        )
+
+        if return_std:
+            t_emop_abs_err, t_emop_abs_err_std = self._fit_t_emop_abs_err.predict(
+                X, return_std=return_std
+            )
+            return t_emop_abs_err, t_emop_abs_err_std
+
+        else:
+            t_emop_abs_err = self._fit_t_emop_abs_err.predict(X, return_std=return_std)
+            return t_emop_abs_err
+
+    def sample_t_emop(
+        self,
+        delta,
+        chi1_x,
+        chi1_y,
+        chi1_z,
+        chi2_x,
+        chi2_y,
+        chi2_z,
+        n_samples=1,
+    ):
+        """
+        Sample the value of t_emop with respect to the peak of the L2 norm of the waveform, corresponding to the query points.
+        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
+        Parameters
+        ----------
+        delta : array_like of shape (n_samples,) or float
+            Asymmetric mass ratio of the query points. delta = (q-1)/(q+1) where q is the mass ratio. q = m1/m2 >= 1.
+
+        chi1_x : array_like of shape (n_samples,) or float
+            x-component of the primary spin at ISCO.
+
+        chi1_y : array_like of shape (n_samples,) or float
+            y-component of the primary spin at ISCO.
+
+        chi1_z : array_like of shape (n_samples,) or float
+            z-component of the primary spin at ISCO.
+
+        chi2_x : array_like of shape (n_samples,) or float
+            x-component of the secondary spin at ISCO.
+
+        chi2_y : array_like of shape (n_samples,) or float
+            y-component of the secondary spin at ISCO.
+
+        chi2_z : array_like of shape (n_samples,) or float
+            z-component of the secondary spin at ISCO.
+
+        n_samples : int
+            Number of samples to draw from the predictive distribution.
+        """
+        X = _make_stacked_array(
+            delta,
+            chi1_x,
+            chi1_y,
+            chi1_z,
+            chi2_x,
+            chi2_y,
+            chi2_z,
+        )
+
+        t_emop = self._fit_t_emop.sample_y(X, n_samples=n_samples)
+        return t_emop
 
     def _shift_amp(
         self,
