@@ -10,6 +10,10 @@ import numpy as np
 import joblib
 from . import qnm_Kerr, final_mass, final_spin
 
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
 import os
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -24,7 +28,42 @@ fit_descr = {
 }
 
 
-def load_fit(name):
+def download_if_missing(filename: str, folder: str):
+    """
+    Check if a file exists in `folder` with name `filename`.
+    If not, download it from the given URL.
+    """
+    file_path = os.path.join(folder, filename)
+    url = f"https://zenodo.org/record/13286798/files/{filename}?download=1"
+
+    if os.path.exists(file_path):
+        print(f"File already exists: {file_path}")
+        return
+    else:
+        print(f"File not found locally. Downloading from {url}...")
+
+    # Requests session with retry logic for robustness.
+    session = requests.Session()
+    retries = Retry(total=5, backoff_factor=1, status_forcelist=[502, 503, 504])
+    session.mount("https://", HTTPAdapter(max_retries=retries))
+
+    try:
+        with session.get(url, stream=True, timeout=30) as response:
+            response.raise_for_status()  # Raise an error for bad status codes
+            with open(file_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:  # filter out keep-alive chunks
+                        f.write(chunk)
+        print(f"Download complete: {file_path}")
+    except requests.RequestException as e:
+        print(f"Error occurred during download: {e}")
+        # Optionally remove the partially downloaded file
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise
+
+
+def load_fit(name, download=False):
     """
     Load surrogate model.
 
@@ -35,7 +74,15 @@ def load_fit(name):
     """
     if name not in allowed_fits:
         raise ValueError("name must be one of " + str(allowed_fits))
-    fit_dict = joblib.load(dir_path + "/data/trained_models/%s_gpr.pkl" % name)
+    trained_models_path = dir_path + "/data/trained_models/"
+    if not os.path.exists(trained_models_path):
+        os.makedirs(trained_models_path)
+    filename = f"{name}_gpr.pkl"
+
+    if download:
+        download_if_missing(filename, trained_models_path)
+
+    fit_dict = joblib.load()
     if "3dq8" in name:
         model = AmplitudeFit3dq8(fit_dict)
         model._descr = fit_descr[name]
