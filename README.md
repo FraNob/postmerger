@@ -37,8 +37,9 @@ postmerger.allowed_fits
 
 ```python
 fitname = '3dq8_20M'
-fit = postmerger.load_fit(fitname)
+fit = postmerger.load_fit(filename=fitname, download = False)
 ```
+Set `downlaod = True` to download files containing the pre-trained precessing models from the Zenodo record (~500MB each).
 
 ### Predict amplitudes and phases
 
@@ -135,7 +136,7 @@ print('final orientation: ',np.cos(thetaf))
 To help reproducibility, we provide data on which our model were trained:
 
 - [data_for_3dq8_20M](examples/data_for_3dq8_20M.ipynb)
-- [data_for_precessing_models]()
+- [data_for_prec_models](examples/data_for_prec_models.ipynb)
 
 ## Citation
 

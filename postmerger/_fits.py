@@ -31,7 +31,7 @@ fit_descr = {
 def download_if_missing(filename: str, folder: str):
     """
     Check if a file exists in `folder` with name `filename`.
-    If not, download it from the given URL.
+    If not, download it from postmerger Zenodo record.
     """
     file_path = os.path.join(folder, filename)
     url = f"https://zenodo.org/record/13286798/files/{filename}?download=1"
