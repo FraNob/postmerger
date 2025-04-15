@@ -82,7 +82,7 @@ def load_fit(name, download=False):
     if download:
         download_if_missing(filename, trained_models_path)
 
-    fit_dict = joblib.load()
+    fit_dict = joblib.load(os.path.join(trained_models_path, filename))
     if "3dq8" in name:
         model = AmplitudeFit3dq8(fit_dict)
         model._descr = fit_descr[name]
