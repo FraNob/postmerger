@@ -110,6 +110,9 @@ def _shift_amp_general(
         return amp
     DT = start_time - self.t0
 
+    if lm == (2, 0):
+        mode = (2, 0, 0)  ## Same for real and imag part
+
     mf = final_mass_val
     sf = final_spin_val
     if hasattr(mode[0], "__len__"):
@@ -195,7 +198,7 @@ class AmplitudeFitPrec6dq10:
     ):
         """
         Predict the values of A_lm corresponding to the query points.
-        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
 
         Parameters
         ----------
@@ -312,7 +315,7 @@ class AmplitudeFitPrec6dq10:
     ):
         """
         Predict the cross-validation absolute error on A_lm corresponding to the query points.
-        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
 
         Parameters
         ----------
@@ -417,7 +420,7 @@ class AmplitudeFitPrec6dq10:
     ):
         """
         Sample the values of A_lm corresponding to the query points.
-        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
 
         Parameters
         ----------
@@ -505,7 +508,7 @@ class AmplitudeFitPrec6dq10:
     ):
         """
         Predict the value of t_emop with respect to the peak of the L2 norm of the waveform, corresponding to the query points.
-        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
 
         Parameters
         ----------
@@ -562,7 +565,7 @@ class AmplitudeFitPrec6dq10:
     ):
         """
         Predict the value of t_emop with respect to the peak of the L2 norm of the waveform, corresponding to the query points.
-        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
 
         Parameters
         ----------
@@ -621,7 +624,7 @@ class AmplitudeFitPrec6dq10:
     ):
         """
         Sample the value of t_emop with respect to the peak of the L2 norm of the waveform, corresponding to the query points.
-        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
 
         Parameters
         ----------
@@ -716,7 +719,7 @@ class AmplitudeFitPrec7dq10:
     ):
         """
         Predict the values of A_lm corresponding to the query points.
-        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
 
         Parameters
         ----------
@@ -837,7 +840,7 @@ class AmplitudeFitPrec7dq10:
     ):
         """
         Predict the values of the cross-validation absolute error on A_lm corresponding to the query points.
-        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
 
         Parameters
         ----------
@@ -957,7 +960,7 @@ class AmplitudeFitPrec7dq10:
     ):
         """
         Draw samples of A_lm from the predictive distribution corresponding to the query points.
-        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
 
         Parameters
         ----------
@@ -1048,7 +1051,7 @@ class AmplitudeFitPrec7dq10:
     ):
         """
         Predict the value of t_emop with respect to the peak of the L2 norm of the waveform, corresponding to the query points.
-        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
 
         Parameters
         ----------
@@ -1109,7 +1112,7 @@ class AmplitudeFitPrec7dq10:
     ):
         """
         Predict the absolute error on t_emop with respect to the peak of the L2 norm of the waveform, corresponding to the query points.
-        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
 
         Parameters
         ----------
@@ -1171,7 +1174,7 @@ class AmplitudeFitPrec7dq10:
     ):
         """
         Sample the value of t_emop with respect to the peak of the L2 norm of the waveform, corresponding to the query points.
-        Mode (2,0) is not circularly polarized. lm=(2,0) corresponds to the real part, while lm=(2,10) corresponds to the imaginary part.
+
 
         Parameters
         ----------
