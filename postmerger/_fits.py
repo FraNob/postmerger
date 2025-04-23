@@ -34,13 +34,14 @@ def download_if_missing(filename: str, folder: str):
     If not, download it from postmerger Zenodo record.
     """
     file_path = os.path.join(folder, filename)
-    url = f"https://zenodo.org/record/13286798/files/{filename}?download=1"
-
+    url = f"https://sandbox.zenodo.org/records/200607/files/{filename}?download=1"
+    url_folder = f"https://sandbox.zenodo.org/records/200607"
+    
     if os.path.exists(file_path):
         print(f"File already exists: {file_path}")
         return
     else:
-        print(f"File not found locally. Downloading from {url}...")
+        print(f"File not found locally. Downloading from {url_folder} ...")
 
     # Requests session with retry logic for robustness.
     session = requests.Session()
@@ -71,9 +72,13 @@ def load_fit(name, download=False):
     ----------
     name : str
         Name of the model. Bust be one of allowed_fits.
+    
+    download : bool. Default=False.
+        If True, download the GPR model file from the corresponding zenodo archive.
     """
     if name not in allowed_fits:
         raise ValueError("name must be one of " + str(allowed_fits))
+        
     trained_models_path = dir_path + "/data/trained_models/"
     if not os.path.exists(trained_models_path):
         os.makedirs(trained_models_path)
@@ -81,6 +86,9 @@ def load_fit(name, download=False):
 
     if download:
         download_if_missing(filename, trained_models_path)
+    else:
+        if not os.path.exists(os.path.join(trained_models_path, filename)):
+            raise ValueError("Fit file is missing! Consider using the option download=True to download the file from the corresponding zenodo repository.")
 
     fit_dict = joblib.load(os.path.join(trained_models_path, filename))
     if "3dq8" in name:
@@ -92,8 +100,7 @@ def load_fit(name, download=False):
     elif "Prec7dq10" in name:
         model = AmplitudeFitPrec7dq10(fit_dict)
         model._descr = fit_descr[name]
-    else:
-        raise ValueError("name must be one of " + str(allowed_fits))
+        
     return model
 
 

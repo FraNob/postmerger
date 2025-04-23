@@ -97,6 +97,8 @@ print(mu_re+1j*mu_im)
 
 We provide functions to compute final mass and final spin from binary parameters.  See the notebook [final_mass_spin](examples/final_mass_spin.ipynb) for further details.
 
+__NOTE:__ _These fits are closed-form approximations calibrated on non-precessing simulations. The `final_spin` routine adopts an heuristic approximation to generalize to precessing spins, which is not necessarily accurate. Therefore, when performing numerical ringdown fits and calibration of GPR models, we used final masses and spins as provided by the SXS metadata._
+
 ```python
 ## (we set a binary with anti-aligned spins ending into a black-hole with final spin pointing downward)
 
