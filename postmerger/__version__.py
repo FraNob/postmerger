@@ -4,7 +4,7 @@ Information about the current version of the postmerger package.
 
 __title__ = 'postmerger'
 __description__ = 'surrogate fits for binary black-hole remnants'
-__version__ = '0.0.2'
+__version__ = '0.1.0'
 __author__ = 'Costantino Pacilio'
 __author_email__ = 'costantino.pacilio@unimib.it'
 __license__ = 'MIT'
