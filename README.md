@@ -8,6 +8,8 @@
 
 - `3dq8_20M`: Ringdown amplitudes from non-precessing, quasi-circular black-hole binaries. Calibrated at $20M$ after the peak of the $(2,2)$ strain. See the example notebook [3dq8_20M](examples/3dq8_20M.ipynb) for usage details. Described in the following paper: [2408.05276](https://arxiv.org/abs/2408.05276) .
 
+- `Prec6dq10_20M`, `Prec7dq10_20M`: Ringdown amplitudes from precessing, quasi-circular black-hole binaries. Calibrated at $20M$ after $t_{\rm EMOP}$. See the example notebook [Prec_models](examples/Prec_models.ipynb) for usage details. Described in the following paper: [XXXXXXXX]() .
+
 ## Installation
 
 ### From source
@@ -28,21 +30,23 @@ import postmerger
 
 ```python
 postmerger.allowed_fits
->>> ['3dq8_20M']
+>>> ['3dq8_20M','Prec6dq10_20M', 'Prec7dq10_20M']
 ```
 
 ### Load fit
 
 ```python
 fitname = '3dq8_20M'
-fit = postmerger.load_fit(fitname)
+fit = postmerger.load_fit(filename=fitname, download = False)
 ```
+Set `downlaod = True` to download files containing the pre-trained precessing models from the Zenodo record (~500MB each).
 
 ### Predict amplitudes and phases
 
 Predicting amplitudes and phases is performed through the `predict_amp` and `predict_phase` methods of `fit`. The arguments are model-specific. See the notebooks below for examples of specific models:
 
 - [3dq8_20M](examples/3dq8_20M.ipynb)
+- [Prec_models](examples/Prec_models.ipynb)
 
 ### Evaluate quasi-normal modes of Kerr black holes
 
@@ -93,6 +97,8 @@ print(mu_re+1j*mu_im)
 
 We provide functions to compute final mass and final spin from binary parameters.  See the notebook [final_mass_spin](examples/final_mass_spin.ipynb) for further details.
 
+__NOTE:__ _These fits are closed-form approximations calibrated on non-precessing simulations. The `final_spin` routine adopts an heuristic approximation to generalize to precessing spins, which is not necessarily accurate. Therefore, when performing numerical ringdown fits and calibration of GPR models, we used final masses and spins as provided by the SXS metadata._
+
 ```python
 ## (we set a binary with anti-aligned spins ending into a black-hole with final spin pointing downward)
 
@@ -132,6 +138,7 @@ print('final orientation: ',np.cos(thetaf))
 To help reproducibility, we provide data on which our model were trained:
 
 - [data_for_3dq8_20M](examples/data_for_3dq8_20M.ipynb)
+- [data_for_prec_models](examples/data_for_prec_models.ipynb)
 
 ## Citation
 
@@ -150,12 +157,11 @@ If you use `postmerger` in your work, please cite the following entries:
 ```
 
 
-
 ```latex
 @software{pacilio_2024_13220424,
   author       = {Pacilio, Costantino and
-                  Swetha, Bhagwat and
-                  Francesco, Nobili and
+                  Bhagwat, Swetha  and
+                  Nobili, Francesco  and
                   Gerosa, Davide},
   title        = {postmerger},
   month        = aug,
