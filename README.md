@@ -160,8 +160,8 @@ If you use `postmerger` in your work, please cite the following entries:
 ```latex
 @software{pacilio_2024_13220424,
   author       = {Pacilio, Costantino and
-                  Swetha, Bhagwat and
-                  Francesco, Nobili and
+                  Bhagwat, Swetha  and
+                  Nobili, Francesco  and
                   Gerosa, Davide},
   title        = {postmerger},
   month        = aug,
