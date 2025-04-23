@@ -104,7 +104,8 @@ def _shift_amp_general(
     Shift the amplitude of the ringdown waveform to a different time.
     Note that start_time depends on the model used.
     For spin-aligned models, start_time is the time from the peak of |h_{22}|. Default is 20.
-    For 6dq10 models, start_time is the time from t_emop. Default is 20."""
+    For 6dq10 models, start_time is the time from t_emop. Default is 20.
+    """
 
     if start_time == self.t0:
         return amp
