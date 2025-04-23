@@ -807,9 +807,9 @@ def q_from_delta(delta):
     return (1 + delta) / (1 - delta)
 
 
-def chi_s_from_spins(q, chi1z, chi2z):
+def chi_s_from_spins(q,chi1z,chi2z):
     """
-    Return the symmetric spin combination.
+    Returns the symmetric spin combination.
 
     Parameters
     ----------
@@ -818,14 +818,15 @@ def chi_s_from_spins(q, chi1z, chi2z):
     chi2z : float
         z-component of the dimensionless spin of the secondary black hole.
     q : float
-        Mass ratio of the binary. q = m1/m2 >= 1."""
+        Mass ratio of the binary. q = m1/m2 >= 1.
+    """
 
     return (q * chi1z + chi2z) / (q + 1)
 
 
-def chi_a_from_spins(q, chi1z, chi2z):
+def chi_a_from_spins(q,chi1z,chi2z):
     """
-    Return the asymmetric spin combination.
+    Returns the anti-symmetric spin combination.
 
     Parameters
     ----------
@@ -834,6 +835,7 @@ def chi_a_from_spins(q, chi1z, chi2z):
     chi2z : float
         z-component of the dimensionless spin of the secondary black hole.
     q : float
-        Mass ratio of the binary. q = m1/m2 >= 1."""
+        Mass ratio of the binary. q = m1/m2 >= 1.
+    """
 
     return (q * chi1z - chi2z) / (q + 1)

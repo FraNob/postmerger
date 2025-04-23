@@ -23,30 +23,24 @@ allowed_fits = ["3dq8_20M", "Prec6dq10_20M", "Prec7dq10_20M"]
 
 fit_descr = {
     "3dq8_20M": "3dq8_20M models amplitudes and phases of the ringdown from a quasi-circular, non-precessing black-hole binary.\nIt is calibrated up to mass ratio 8 and at a starting time 20M from the peak of the (2,2) strain.",
-    "Prec6dq10_20M": "Prec6dq10_20M models amplitudes of the ringdown from a quasi-circular, precessing black-hole binary.\nIt is calibrated up to mass ratio 10 and at a starting time 20M from t_emop of the simulation.\nIt also provides an uncertainty estimate calibrated on the cross-validation absolute error on the amplitude values.",
-    "Prec7dq10_20M": "Prec7dq10_20M models amplitudes of the ringdown from a quasi-circular, precessing black-hole binary.\nIt is calibrated up to mass ratio 10 and at a starting time 20M from t_emop of the simulation.\nIt also provides an uncertainty estimate calibrated on the cross-validation absolute error on the amplitude values.",
+    "Prec6dq10_20M": "Prec6dq10_20M models amplitudes of the ringdown from a quasi-circular, precessing black-hole binary.\nIt is calibrated up to mass ratio 10 and at a starting time 20M from t_emop of the simulation.\nIt also provides an uncertainty estimate calibrated on the cross-validation absolute error on the amplitude values.\nNote that the coverage in the binary parameters can be sparse for high mass ratios, see Figure 4 of THE PAPER.",
+    "Prec7dq10_20M": "Prec7dq10_20M models amplitudes of the ringdown from a quasi-circular, precessing black-hole binary.\nIt is calibrated up to mass ratio 10 and at a starting time 20M from t_emop of the simulation.\nIt also provides an uncertainty estimate calibrated on the cross-validation absolute error on the amplitude values.\nNote that the coverage in the binary parameters can be sparse for high mass ratios, see Figure 4 of THE PAPER.",
 }
 
-
-def download_if_missing(filename: str, folder: str):
+def download_model(filename,folder):
     """
-    Check if a file exists in `folder` with name `filename`.
-    If not, download it from postmerger Zenodo record.
+    Downloads a surrogate model from the zenodo repository.
     """
     file_path = os.path.join(folder, filename)
-    url = f"https://sandbox.zenodo.org/records/200607/files/{filename}?download=1"
-    url_folder = f"https://sandbox.zenodo.org/records/200607"
+    url = f"https://zenodo.org/records/15267565/files/{filename}?download=1"
+    url_folder = f"https://zenodo.org/records/15267565"
     
-    if os.path.exists(file_path):
-        print(f"File already exists: {file_path}")
-        return
-    else:
-        print(f"File not found locally. Downloading from {url_folder} ...")
-
     # Requests session with retry logic for robustness.
     session = requests.Session()
     retries = Retry(total=5, backoff_factor=1, status_forcelist=[502, 503, 504])
     session.mount("https://", HTTPAdapter(max_retries=retries))
+    
+    print(f"Downloading from {url_folder} ...")
 
     try:
         with session.get(url, stream=True, timeout=30) as response:
@@ -61,10 +55,10 @@ def download_if_missing(filename: str, folder: str):
         # Optionally remove the partially downloaded file
         if os.path.exists(file_path):
             os.remove(file_path)
-        raise
+            
+    return None
 
-
-def load_fit(name, download=False):
+def load_fit(name, download=True):
     """
     Load surrogate model.
 
@@ -73,8 +67,8 @@ def load_fit(name, download=False):
     name : str
         Name of the model. Bust be one of allowed_fits.
     
-    download : bool. Default=False.
-        If True, download the GPR model file from the corresponding zenodo archive.
+    download : bool. Default=True
+        If True and the surrogate file does not exist, download the surrogate file from the zenodo repository.
     """
     if name not in allowed_fits:
         raise ValueError("name must be one of " + str(allowed_fits))
@@ -83,11 +77,11 @@ def load_fit(name, download=False):
     if not os.path.exists(trained_models_path):
         os.makedirs(trained_models_path)
     filename = f"{name}_gpr.pkl"
-
-    if download:
-        download_if_missing(filename, trained_models_path)
-    else:
-        if not os.path.exists(os.path.join(trained_models_path, filename)):
+    
+    if not os.path.exists(os.path.join(trained_models_path, filename)):
+        if download:
+            download_model(filename,trained_models_path)
+        else:
             raise ValueError("Fit file is missing! Consider using the option download=True to download the file from the corresponding zenodo repository.")
 
     fit_dict = joblib.load(os.path.join(trained_models_path, filename))
@@ -104,16 +98,18 @@ def load_fit(name, download=False):
     return model
 
 
-def _shift_amp_general(
-    self, amp, final_mass_val, final_spin_val, lm, mode, start_time, qnm_method="interp"
-):
+def _shift_amp_general(self,amp,final_mass_val,final_spin_val,\
+                       lm,mode,start_time,\
+                       qnm_method="interp"):
     """
     Shift the amplitude of the ringdown waveform to a different time.
     Note that start_time depends on the model used.
     For spin-aligned models, start_time is the time from the peak of |h_{22}|. Default is 20.
     For 6dq10 models, start_time is the time from t_emop. Default is 20.
     """
-
+    massf = final_mass_val
+    spinf = final_spin_val
+    
     if start_time == self.t0:
         return amp
     DT = start_time - self.t0
@@ -121,26 +117,22 @@ def _shift_amp_general(
     if lm == (2, 0):
         mode = (2, 0, 0)  ## Same for real and imag part
 
-    mf = final_mass_val
-    sf = final_spin_val
     if hasattr(mode[0], "__len__"):
         ## handle quadratic mode
+        ## why these round parntheses??
         inv_tau = 0.0
         for linear_mode in mode:
-            inv_tau += (
-                1.0
-                / qnm_Kerr(mf, sf, linear_mode, qnm_method=qnm_method, SI_units=False)[
-                    1
-                ]
-            )
+            inv_tau += \
+                (1.0/qnm_Kerr(massf,spinf,linear_mode,qnm_method=qnm_method,\
+                                     SI_units=False)[1])
     else:
         ## handle linear mode
-        inv_tau = 1.0 / qnm_Kerr(mf, sf, mode, qnm_method=qnm_method, SI_units=False)[1]
-    if lm != (2, 2) or mode != (2, 2, 0):
-        inv_tau -= (
-            1.0 / qnm_Kerr(mf, sf, (2, 2, 0), qnm_method=qnm_method, SI_units=False)[1]
-        )
-    out = amp * np.exp(-DT * inv_tau)
+        inv_tau = 1.0/qnm_Kerr(massf,spinf,mode,qnm_method=qnm_method,\
+                               SI_units=False)[1]
+    if lm!=(2,2) or mode!=(2,2,0):
+        inv_tau -= (1.0/qnm_Kerr(massf,spinf,(2,2,0),qnm_method=qnm_method,\
+                                 SI_units=False)[1])
+    out = amp*np.exp(-DT*inv_tau)
     return out
 
 
@@ -1257,7 +1249,7 @@ class AmplitudeFit3dq8:
         out = self._descr
         return out
 
-    def predict_xy_amp(self, mass_ratio, chi1z, chi2z, lm, mode, return_std=False):
+    def predict_xy_amp(self,mass_ratio,chi1z,chi2z,lm,mode,return_std=False):
         """
         Predict the values of A^x and A^y corresponding to the query points (mass_ratio,chi1z,chi2z).
 
@@ -1283,9 +1275,9 @@ class AmplitudeFit3dq8:
         return_std : bool. Default=False.
             Whether or not to return the standard deviation of the predictive distribution at the query points.
         """
-        X = self._transform_X(mass_ratio, chi1z, chi2z)
-        if lm == (2, 2) and mode == (2, 2, 0):
-            amp_x = self._fit_amps[lm][mode].predict(X, return_std=return_std)
+        X = self._transform_X(mass_ratio,chi1z,chi2z)
+        if lm==(2,2) and mode==(2,2,0):
+            amp_x = self._fit_amps[lm][mode].predict(X,return_std=return_std)
             amp_y = np.zeros_like(mass_ratio)
             if return_std:
                 mu_x, std_x = amp_x
@@ -1296,9 +1288,7 @@ class AmplitudeFit3dq8:
                 return amp_x, amp_y
         else:
             if return_std:
-                out_mu, out_std = self._fit_amps[lm][mode].predict(
-                    X, return_std=return_std
-                )
+                out_mu, out_std = self._fit_amps[lm][mode].predict(X,return_std=return_std)
                 mu_x, mu_y = out_mu.T
                 std_x, std_y = out_std.T
                 return mu_x, mu_y, std_x, std_y
@@ -1307,9 +1297,7 @@ class AmplitudeFit3dq8:
                 mu_x, mu_y = out_mu.T
                 return mu_x, mu_y
 
-    def predict_amp(
-        self, mass_ratio, chi1z, chi2z, lm, mode, return_std=False, start_time=None
-    ):
+    def predict_amp(self,mass_ratio,chi1z,chi2z,lm,mode,return_std=False,start_time=None):
         """
         Predict the value of abs(A^x+iA^y) corresponding to the query points (mass_ratio,chi1z,chi2z).
 
@@ -1340,18 +1328,12 @@ class AmplitudeFit3dq8:
             If None (default), assume that start_time=self.t0.
         """
         if return_std:
-            mu_x, mu_y, std_x, std_y = self.predict_xy_amp(
-                mass_ratio, chi1z, chi2z, lm, mode, return_std=return_std
-            )
-            mu_abs = np.sqrt(mu_x**2 + mu_y**2)
-            std_abs = np.sqrt((mu_x * std_x) ** 2 + (mu_y * std_y) ** 2) / mu_abs
+            mu_x, mu_y, std_x, std_y = self.predict_xy_amp(mass_ratio,chi1z,chi2z,lm,mode,return_std=return_std)
+            mu_abs = np.sqrt(mu_x**2+mu_y**2)
+            std_abs = np.sqrt((mu_x*std_x)**2+(mu_y*std_y)**2)/mu_abs
             if start_time is not None:
-                mu_abs = self._shift_amp(
-                    mu_abs, mass_ratio, chi1z, chi2z, lm, mode, start_time
-                )
-                std_abs = self._shift_amp(
-                    std_abs, mass_ratio, chi1z, chi2z, lm, mode, start_time
-                )
+                mu_abs = self._shift_amp(mu_abs,mass_ratio,chi1z,chi2z,lm,mode,start_time)
+                std_abs = self._shift_amp(std_abs,mass_ratio,chi1z,chi2z,lm,mode,start_time)
             return mu_abs, std_abs
         else:
             mu_x, mu_y = self.predict_xy_amp(
@@ -1364,9 +1346,7 @@ class AmplitudeFit3dq8:
                 )
             return mu_abs
 
-    def predict_phase(
-        self, mass_ratio, chi1z, chi2z, lm, mode, return_std=False, start_time=None
-    ):
+    def predict_phase(self,mass_ratio,chi1z,chi2z,lm,mode,return_std=False,start_time=None):
         """
         Predict the value of angle(A^x+iA^y)/beta corresponding to the query points (mass_ratio,chi1z,chi2z).
         beta is a correction factor introduced in CITE-THE-PAPER to help fitting of A^x and A^y.
@@ -1399,31 +1379,21 @@ class AmplitudeFit3dq8:
         """
         beta = 1 + np.mod(lm[1], 2)
         if return_std:
-            mu_x, mu_y, std_x, std_y = self.predict_xy_amp(
-                mass_ratio, chi1z, chi2z, lm, mode, return_std=return_std
-            )
-            mu_abs = np.sqrt(mu_x**2 + mu_y**2)
-            mu_phi = np.angle(mu_x + 1j * mu_y) / beta
-            std_phi = (
-                np.sqrt((mu_x * std_y) ** 2 + (mu_y * std_y) ** 2) / mu_abs**2 / beta
-            )
+            mu_x, mu_y, std_x, std_y = self.predict_xy_amp(mass_ratio,chi1z,chi2z,lm,mode,return_std=return_std)
+            mu_abs = np.sqrt(mu_x**2+mu_y**2)
+            mu_phi = np.angle(mu_x+1j*mu_y)/beta
+            std_phi = (np.sqrt((mu_x*std_y)**2+(mu_y*std_y)**2)/mu_abs**2/beta)
             if start_time is not None:
-                mu_phi = self._shift_phase(
-                    mu_phi, mass_ratio, chi1z, chi2z, lm, mode, start_time
-                )
+                mu_phi = self._shift_phase(mu_phi,mass_ratio,chi1z,chi2z,lm,mode,start_time)
             return mu_phi, std_phi
         else:
-            mu_x, mu_y = self.predict_xy_amp(
-                mass_ratio, chi1z, chi2z, lm, mode, return_std=return_std
-            )
-            mu_phi = np.angle(mu_x + 1j * mu_y) / beta
+            mu_x, mu_y = self.predict_xy_amp(mass_ratio,chi1z,chi2z,lm,mode,return_std=return_std)
+            mu_phi = np.angle(mu_x+1j*mu_y)/beta
             if start_time is not None:
-                mu_phi = self._shift_phase(
-                    mu_phi, mass_ratio, chi1z, chi2z, lm, mode, start_time
-                )
+                mu_phi = self._shift_phase(mu_phi,mass_ratio,chi1z,chi2z,lm,mode,start_time)
             return mu_phi
 
-    def sample_xy_amp(self, mass_ratio, chi1z, chi2z, lm, mode, n_samples=1):
+    def sample_xy_amp(self,mass_ratio,chi1z,chi2z,lm,mode,n_samples=1):
         """
         Draw samples of of A^x and A^y from the predictive distribution corresponding to the query points (mass_ratio,chi1z,chi2z).
 
@@ -1454,18 +1424,16 @@ class AmplitudeFit3dq8:
         amp_x : array-like of shape (n_samples_X, n_samples)
         amp_y : array-like of shape (n_samples_X, n_samples)
         """
-        X = self._transform_X(mass_ratio, chi1z, chi2z)
-        if lm == (2, 2) and mode == (2, 2, 0):
-            amp_x = self._fit_amps[lm][mode].sample_y(X, n_samples=n_samples)
+        X = self._transform_X(mass_ratio,chi1z,chi2z)
+        if lm==(2,2) and mode==(2,2,0):
+            amp_x = self._fit_amps[lm][mode].sample_y(X,n_samples=n_samples)
             amp_y = np.zeros_like(amp_x)
         else:
-            out = self._fit_amps[lm][mode].sample_y(X, n_samples=n_samples)
-            amp_x, amp_y = out[:, 0, :], out[:, 1, :]
+            out = self._fit_amps[lm][mode].sample_y(X,n_samples=n_samples)
+            amp_x, amp_y = out[:,0,:], out[:,1,:]
         return amp_x, amp_y
 
-    def sample_amp(
-        self, mass_ratio, chi1z, chi2z, lm, mode, n_samples=1, start_time=None
-    ):
+    def sample_amp(self,mass_ratio,chi1z,chi2z,lm,mode,n_samples=1,start_time=None):
         """
         Draw samples of abs(A^x+iA^y) from the predictive distribution corresponding to the query points (mass_ratio,chi1z,chi2z).
 
@@ -1499,24 +1467,15 @@ class AmplitudeFit3dq8:
         -------
         amp : array-like of shape (n_samples_X, n_samples)
         """
-        amp_x, amp_y = self.sample_xy_amp(
-            mass_ratio, chi1z, chi2z, lm, mode, n_samples=n_samples
-        )
-        amp = np.sqrt(amp_x**2 + amp_y**2)
+        amp_x, amp_y = self.sample_xy_amp(mass_ratio,chi1z,chi2z,lm,mode,n_samples=n_samples)
+        amp = np.sqrt(amp_x**2+amp_y**2)
         if start_time is not None:
-            amp = np.array(
-                [
-                    self._shift_amp(
-                        amp_k, mass_ratio, chi1z, chi2z, lm, mode, start_time
-                    )
-                    for amp_k in amp.T
-                ]
-            )
+            amp = np.array([self._shift_amp(                               
+                amp_k,mass_ratio,chi1z,chi2z,lm,mode,start_time)
+                    for amp_k in amp.T])
         return amp
 
-    def sample_phase(
-        self, mass_ratio, chi1z, chi2z, lm, mode, n_samples=1, start_time=None
-    ):
+    def sample_phase(self,mass_ratio,chi1z,chi2z,lm,mode,n_samples=1,start_time=None):
         """
         Draw samples of angle(A^x+iA^y)/beta from the predictive distribution corresponding to the query points (mass_ratio,chi1z,chi2z).
         beta is a correction factor introduced in CITE-THE-PAPER to help fitting of A^x and A^y.
@@ -1552,95 +1511,65 @@ class AmplitudeFit3dq8:
         phase : array-like of shape (n_samples_X, n_samples)
         """
         beta = 1 + np.mod(lm[1], 2)
-        amp_x, amp_y = self.sample_amp_xy_amp(
-            mass_ratio, chi1z, chi2z, lm, mode, n_samples=n_samples
-        )
-        phi = np.angle(amp_x + 1j * amp_y) / beta
+        amp_x, amp_y = self.sample_amp_xy_amp(mass_ratio,chi1z,chi2z,lm,mode,n_samples=n_samples)
+        phi = np.angle(amp_x + 1j*amp_y)/beta
         if start_time is not None:
-            phi = np.array(
-                [
-                    self._shift_phase(
-                        phi_k, mass_ratio, chi1z, chi2z, lm, mode, start_time
-                    )
-                    for phi_k in phi.T
-                ]
-            )
+            phi = np.array([               self._shift_phase(phi_k,mass_ratio,chi1z,chi2z,lm,mode,start_time)
+                    for phi_k in phi.T])
         return phi
 
-    def _transform_X(self, mass_ratio, chi1z, chi2z):
-        mass1 = mass_ratio / (1 + mass_ratio)
-        mass2 = 1 / (1 + mass_ratio)
-        chip = chi1z * mass1 + chi2z * mass2
-        chim = chi1z * mass1 - chi2z * mass2
-        eta = np.clip(mass_ratio / (1 + mass_ratio) ** 2, 0, 0.25)
-        delta = np.sqrt(1 - 4 * eta)
-        out = np.vstack((delta, chip, chim)).T
-        print("X shape", out.shape)
+    def _transform_X(self,mass_ratio,chi1z,chi2z):
+        mass1 = mass_ratio/(1+mass_ratio)
+        mass2 = 1/(1+mass_ratio)
+        chip = chi1z*mass1+chi2z*mass2
+        chim = chi1z*mass1-chi2z*mass2
+        eta = np.clip(mass_ratio/(1+mass_ratio)**2,0,0.25)
+        delta = np.sqrt(1-4*eta)
+        out = np.vstack((delta,chip,chim)).T
+        print("X shape",out.shape)
         return out
 
-    def _shift_amp(
-        self, amp, mass_ratio, chi1z, chi2z, lm, mode, start_time, qnm_method="interp"
-    ):
+    def _shift_amp(self,amp,mass_ratio,chi1z,chi2z,lm,mode,start_time,qnm_method="interp"):
         if start_time == self.t0:
             return amp
         DT = start_time - self.t0
-        mass1 = mass_ratio / (1 + mass_ratio)
-        mass2 = 1 / (1 + mass_ratio)
-        mf = final_mass(mass1, mass2, chi1z, chi2z, aligned_spins=True, method="B12")
-        sf = final_spin(mass1, mass2, chi1z, chi2z, aligned_spins=True, method="H16")
-        if hasattr(mode[0], "__len__"):
+        mass1 = mass_ratio/(1+mass_ratio)
+        mass2 = 1/(1+mass_ratio)
+        mf = final_mass(mass1,mass2,chi1z,chi2z,aligned_spins=True,method="B12")
+        sf = final_spin(mass1,mass2,chi1z,chi2z,aligned_spins=True,method="H16")
+        if hasattr(mode[0],"__len__"):
             ## handle quadratic mode
             inv_tau = 0.0
             for linear_mode in mode:
-                inv_tau += (
-                    1.0
-                    / qnm_Kerr(
-                        mf, sf, linear_mode, qnm_method=qnm_method, SI_units=False
-                    )[1]
-                )
+                inv_tau += (1.0/qnm_Kerr(mf,sf,linear_mode,qnm_method=qnm_method,SI_units=False)[1])
         else:
             ## handle linear mode
-            inv_tau = (
-                1.0 / qnm_Kerr(mf, sf, mode, qnm_method=qnm_method, SI_units=False)[1]
-            )
-        if lm != (2, 2) or mode != (2, 2, 0):
-            inv_tau -= (
-                1.0
-                / qnm_Kerr(mf, sf, (2, 2, 0), qnm_method=qnm_method, SI_units=False)[1]
-            )
-        out = amp * np.exp(-DT * inv_tau)
+            inv_tau = (1.0/qnm_Kerr(mf,sf,mode,qnm_method=qnm_method,SI_units=False)[1])
+        if lm!=(2, 2) or mode!=(2, 2, 0):
+            inv_tau -= (1.0/qnm_Kerr(mf, sf, (2, 2, 0), qnm_method=qnm_method, SI_units=False)[1])
+        out = amp*np.exp(-DT*inv_tau)
         return out
 
-    def _shift_phase(
-        self, phase, mass_ratio, chi1z, chi2z, lm, mode, start_time, qnm_method="interp"
-    ):
+    def _shift_phase(self,phase,mass_ratio,chi1z,chi2z,lm,mode,start_time, qnm_method="interp"):
         if start_time == self.t0:
             return phase
         DT = start_time - self.t0
-        mass1 = mass_ratio / (1 + mass_ratio)
-        mass2 = 1 / (1 + mass_ratio)
-        mf = final_mass(mass1, mass2, chi1z, chi2z, aligned_spins=True, method="B12")
-        sf = final_spin(mass1, mass2, chi1z, chi2z, aligned_spins=True, method="H16")
-        if hasattr(mode[0], "__len__"):
+        mass1 = mass_ratio/(1 + mass_ratio)
+        mass2 = 1/(1 + mass_ratio)
+        mf = final_mass(mass1,mass2,chi1z,chi2z,aligned_spins=True,method="B12")
+        sf = final_spin(mass1,mass2,chi1z,chi2z,aligned_spins=True,method="H16")
+        if hasattr(mode[0],"__len__"):
             ## handle quadratic mode
             freq = 0.0
             for linear_mode in mode:
-                freq += qnm_Kerr(
-                    mf, sf, linear_mode, qnm_method=qnm_method, SI_units=False
-                )[0]
+                freq += qnm_Kerr(mf,sf,linear_mode,qnm_method=qnm_method,SI_units=False)[0]
         else:
             ## handle linear mode
-            freq = (
-                1.0 / qnm_Kerr(mf, sf, mode, qnm_method=qnm_method, SI_units=False)[0]
-            )
-        if lm != (2, 2) or mode != (2, 2, 0):
-            freq -= (
-                0.5
-                * lm[1]
-                * qnm_Kerr(mf, sf, (2, 2, 0), qnm_method=qnm_method, SI_units=False)[0]
-            )
-        out = phase + 2 * np.pi * freq * DT
-        out = np.angle(np.exp(1j * out))
+            freq = (1.0/qnm_Kerr(mf,sf,mode,qnm_method=qnm_method,SI_units=False)[0])
+        if lm!=(2,2) or mode!=(2,2,0):
+            freq -= (0.5*lm[1]*qnm_Kerr(mf,sf,(2,2,0),qnm_method=qnm_method,SI_units=False)[0])
+        out = phase + 2*np.pi*freq*DT
+        out = np.angle(np.exp(1j*out))
         return out
 
 
@@ -1649,16 +1578,12 @@ class CustomGPR(RegressorMixin, BaseEstimator):
     def __init__(self):
         return None
 
-    def fit(
-        self,
-        X,
-        y,
+    def fit(self,X,y,
         sample_weight=None,
         normalize_y=True,
         linear_fit: bool = True,
         precessing=False,
-        **kwargs,
-    ):
+        **kwargs):
         """
         Fit GPR by first subtracting a linear fit.
 
@@ -1685,7 +1610,7 @@ class CustomGPR(RegressorMixin, BaseEstimator):
             sample_weight = np.ones((X.shape[0],))
             alpha = 1e-10
         else:
-            alpha = 1 / sample_weight
+            alpha = 1/sample_weight
 
         self.linear_fit = (
             linear_fit  ## Need this because precessing are done without linear fit
@@ -1693,27 +1618,19 @@ class CustomGPR(RegressorMixin, BaseEstimator):
         self.precessing = precessing  ## used in _prepare_kernel(). Need this because precessing are initialised with different base kernel length_scale
 
         if linear_fit:
-            self._linear_fit(X, y, sample_weight=sample_weight)
-            self._gpr_fit(
-                X,
-                y,
-                alpha=alpha,
+            self._linear_fit(X,y,sample_weight=sample_weight)
+            self._gpr_fit(X,y,alpha=alpha,
                 normalize_y=normalize_y,
                 n_restarts_optimizer=0,
-                **kwargs,
-            )
+                **kwargs)
         else:
-            self._gpr_fit(
-                X,
-                y,
-                alpha=alpha,
+            self._gpr_fit(X,y,alpha=alpha,
                 normalize_y=normalize_y,
                 n_restarts_optimizer=0,
-                **kwargs,
-            )
+                **kwargs)
         return None
 
-    def predict(self, X, return_std=False):
+    def predict(self,X,return_std=False):
         """
         Predict the target corresponding to the query points X.
 
@@ -1734,28 +1651,30 @@ class CustomGPR(RegressorMixin, BaseEstimator):
             Standard deviation of the predictive distribution at the query points X.
             Only returned when return_std=True.
         """
-        ## If self.linear_fit is not found, create and set to True (means that these are the old models)
+        ## If self.linear_fit is not found, create and set to True (it means that these are the old models)
+        ## WHY IS THIS NECESSARY? self.linear_fit is created upon initialization.
+        ## Is it because the old models were created with a different class version? 
         if not hasattr(self, "linear_fit"):
             self.linear_fit = True
 
         if self.linear_fit:
             if return_std:
-                out, std = self.gpr.predict(X, return_std=True)
+                out, std = self.gpr.predict(X,return_std=True)
                 out += self.lin.predict(X)
                 return out, std
             else:
-                out = self.gpr.predict(X, return_std=False)
+                out = self.gpr.predict(X,return_std=False)
                 out += self.lin.predict(X)
                 return out
         else:
             if return_std:
-                out, std = self.gpr.predict(X, return_std=True)
+                out, std = self.gpr.predict(X,return_std=True)
                 return out, std
             else:
-                out = self.gpr.predict(X, return_std=False)
+                out = self.gpr.predict(X,return_std=False)
                 return out
 
-    def rms_score(self, X, y_true, sample_weight=None):
+    def rms_score(self,X,y_true,sample_weight=None):
         """
         Return the root mean squared error of the prediction.
 
@@ -1771,19 +1690,13 @@ class CustomGPR(RegressorMixin, BaseEstimator):
             Individual weights for each sample.
             None (default) is equivalent to 1-D sample_weight filled with ones.
         """
-        y_pred = self.predict(X, return_std=False)
-        out = (
-            mean_squared_error(
-                y_true,
-                y_pred,
+        y_pred = self.predict(X,return_std=False)
+        out = (mean_squared_error(y_true,y_pred,
                 sample_weight=sample_weight,
-                multioutput="uniform_average",
-            )
-            ** 0.5
-        )
+                multioutput="uniform_average")**0.5)
         return out
 
-    def std_score(self, X, y_true, sample_weight=None):
+    def std_score(self,X,y_true,sample_weight=None):
         """
         Return the root mean squared error of the prediction, where each sample is weighted by the inverse square of the standard deviation of the predcitve distribution.
         It can be thought as the average distance of the mean predictions from y_true, in units of GPR standard deviation.
@@ -1800,17 +1713,14 @@ class CustomGPR(RegressorMixin, BaseEstimator):
             Individual weights for each sample.
             None (default) is equivalent to 1-D sample_weight filled with ones.
         """
-        y_pred, std_pred = self.predict(X, return_std=True)
+        y_pred, std_pred = self.predict(X,return_std=True)
         if sample_weight is not None:
-            out = (
-                np.sum((y_true - y_pred) ** 2 / std_pred**2 * sample_weight)
-                / np.sum(sample_weight)
-            ) ** 0.5
+            out = (np.sum((y_true-y_pred)**2/std_pred**2*sample_weight)/np.sum(sample_weight))**0.5
         else:
-            out = np.mean((y_true - y_pred) ** 2 / std_pred**2) ** 0.5
+            out = np.mean((y_true-y_pred)**2/std_pred**2)**0.5
         return out
 
-    def r2_score(self, X, y_true, sample_weight=None):
+    def r2_score(self,X,y_true,sample_weight=None):
         """
         Return the R2 (coefficient of determination) regression score.
 
@@ -1826,13 +1736,12 @@ class CustomGPR(RegressorMixin, BaseEstimator):
             Individual weights for each sample.
             None (default) is equivalent to 1-D sample_weight filled with ones.
         """
-        y_pred = self.predict(X, return_std=False)
-        out = r2_score(
-            y_true, y_pred, sample_weight=sample_weight, multioutput="uniform_average"
-        )
+        y_pred = self.predict(X,return_std=False)
+        out = r2_score(y_true,y_pred,sample_weight=sample_weight,\
+                       multioutput="uniform_average")
         return out
 
-    def sample_y(self, X, n_samples=1, random_state=42):
+    def sample_y(self,X,n_samples=1,random_state=42):
         """
         Draw samples from the GPR and evaluate at X.
 
@@ -1849,9 +1758,7 @@ class CustomGPR(RegressorMixin, BaseEstimator):
         y_samples : array-like of shape (n_samples_X, n_samples) or (n_samples_X, n_targets, n_samples)
         """
         X_transformed = self.gpr["scaler"].transform(X)
-        out = self.gpr["gpr"].sample_y(
-            X_transformed, n_samples=n_samples, random_state=random_state
-        )
+        out = self.gpr["gpr"].sample_y(X_transformed,n_samples=n_samples,random_state=random_state)
 
         ## If self.linear_fit is not found, create and set to True (means that these are the old models)
         if not hasattr(self, "linear_fit"):
@@ -1863,43 +1770,37 @@ class CustomGPR(RegressorMixin, BaseEstimator):
                 out += self.lin.predict(X)[:, :, np.newaxis]
         return out
 
-    def _linear_fit(self, X, y, sample_weight=None):
-        self.lin = Pipeline(
-            [("scaler", StandardScaler()), ("lin", LinearRegression())],
-        )
-        self.lin.fit(X, y, lin__sample_weight=sample_weight)
+    def _linear_fit(self,X,y,sample_weight=None):
+        self.lin = Pipeline([("scaler", StandardScaler()),\
+                             ("lin", LinearRegression())],\
+                           )
+        self.lin.fit(X,y,lin__sample_weight=sample_weight)
         return None
 
-    def _gpr_fit(self, X, y, **kwargs):
-        kernel = self._prepare_kernel(X_dim=X.shape[1], white_kernel=True)
-        self.gpr = Pipeline(
-            [("scaler", StandardScaler()), ("gpr", GPR(kernel=kernel, **kwargs))]
-        )
+    def _gpr_fit(self,X,y,**kwargs):
+        kernel = self._prepare_kernel(X_dim=X.shape[1],white_kernel=True)
+        self.gpr = Pipeline([("scaler", StandardScaler()),\
+                             ("gpr", GPR(kernel=kernel, **kwargs))])
         if self.linear_fit:
             y_lin = self.lin.predict(X)
-            self.gpr.fit(X, y - y_lin)
+            self.gpr.fit(X,y-y_lin)
         else:
-            self.gpr.fit(X, y)
-
+            self.gpr.fit(X,y)
         return None
 
-    def _prepare_kernel(self, X_dim, white_kernel=False):
-        if self.precessing:  ## I used different initial length_scale for precessing
-            kernel1 = RBF(
-                length_scale=np.ones((X_dim,)) * 0.2, length_scale_bounds=(1e-10, 1e5)
-            )
+    def _prepare_kernel(self,X_dim,white_kernel=False):
+        if self.precessing:
+            kernel1 = RBF(length_scale=np.ones((X_dim,))*0.2,length_scale_bounds=(1e-10,1e5))
             kernel2 = ConstantKernel()
-            kernel = kernel1 * kernel2
+            kernel = kernel1*kernel2
             if white_kernel:
-                kernel3 = WhiteKernel(noise_level=1, noise_level_bounds=(1e-10, 1e2))
+                kernel3 = WhiteKernel(noise_level=1,noise_level_bounds=(1e-10,1e2))
                 kernel += kernel3
         else:
-            kernel1 = RBF(
-                length_scale=np.ones((X_dim,)), length_scale_bounds=(1e-10, 1e5)
-            )
-            kernel2 = ConstantKernel(constant_value_bounds=(1e-5, 1e5))
-            kernel = kernel1 * kernel2
+            kernel1 = RBF(length_scale=np.ones((X_dim,)),length_scale_bounds=(1e-10,1e5))
+            kernel2 = ConstantKernel(constant_value_bounds=(1e-5,1e5))
+            kernel = kernel1*kernel2
             if white_kernel:
-                kernel3 = WhiteKernel(noise_level=1, noise_level_bounds=(1e-10, 1e2))
+                kernel3 = WhiteKernel(noise_level=1, noise_level_bounds=(1e-10,1e2))
                 kernel += kernel3
         return kernel
