@@ -8,7 +8,7 @@
 
 - `3dq8_20M`: Ringdown amplitudes from non-precessing, quasi-circular black-hole binaries. Calibrated at $20M$ after the peak of the $(2,2)$ strain. See the example notebook [3dq8_20M](examples/3dq8_20M.ipynb) for usage details. Described in the following paper: [2408.05276](https://arxiv.org/abs/2408.05276) .
 
-- `Prec6dq10_20M`, `Prec7dq10_20M`: Ringdown amplitudes from precessing, quasi-circular black-hole binaries. Calibrated at $20M$ after $t_{\rm EMOP}$. See the example notebook [Prec_models](examples/Prec_models.ipynb) for usage details. Described in the following paper: [XXXXXXXX]() .
+- `Prec6dq10_20M`, `Prec7dq10_20M`: Ringdown amplitudes from precessing, quasi-circular black-hole binaries. Calibrated at $20M$ after $t_{\rm EMOP}$. See the example notebook [Prec_models](examples/Prec_models.ipynb) for usage details. Described in the following paper: [2504.17021](https://arxiv.org/abs/2504.17021) .
 
 ## Installation
 
@@ -172,6 +172,20 @@ If you use `postmerger` in your work, please cite the following entries:
   url          = {https://doi.org/10.5281/zenodo.13220424}
 }
 ```
+
+```latex
+@article{Nobili:2025ydt,
+    author = "Nobili, Francesco and Bhagwat, Swetha and Pacilio, Costantino and Gerosa, Davide",
+    title = "{Ringdown mode amplitudes of precessing binary black holes}",
+    eprint = "2504.17021",
+    archivePrefix = "arXiv",
+    primaryClass = "gr-qc",
+    month = "4",
+    year = "2025"
+}
+```
+
+
 
 ## Coming soon
 
