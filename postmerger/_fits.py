@@ -1526,7 +1526,6 @@ class AmplitudeFit3dq8:
         eta = np.clip(mass_ratio/(1+mass_ratio)**2,0,0.25)
         delta = np.sqrt(1-4*eta)
         out = np.vstack((delta,chip,chim)).T
-        print("X shape",out.shape)
         return out
 
     def _shift_amp(self,amp,mass_ratio,chi1z,chi2z,lm,mode,start_time,qnm_method="interp"):
